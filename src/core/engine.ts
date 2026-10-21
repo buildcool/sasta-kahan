@@ -4,6 +4,7 @@ import { fetchText } from './fetcher.ts';
 import { condenseTitle, detectCategories, makeReference, pickBest, scoreListings, type Reference } from './matcher.ts';
 import { dedupeOffers, harvestOffers } from './offers.ts';
 import { buildRequest, manualUrl, parseResponse } from './parse.ts';
+import { cleanSharedText, cleanStoreTitle, isProductTitle } from './share.ts';
 import type { Offer, SiteConfig, SiteResult, UserCard } from './types.ts';
 
 export interface SearchInput {
@@ -102,11 +103,13 @@ async function productOffers(site: SiteConfig, url: string): Promise<Offer[]> {
   }
 }
 
-/** Cheapest effective price first; sites still loading / failed go last. */
+/** Same product first, then cheapest effective price; sites still loading / failed go last. */
 export function sortResults(r: SiteResult[]): SiteResult[] {
   const order = { ok: 0, loading: 1, empty: 2, blocked: 3, error: 3, manual: 4 };
+  const tier = { exact: 0, size: 1, similar: 2, different: 3 };
   return r.sort((a, b) => {
     if (a.status !== b.status) return order[a.status] - order[b.status];
+    if (a.best && b.best && a.best.match !== b.best.match) return tier[a.best.match] - tier[b.best.match];
     const pa = a.best?.effective?.mine ?? a.best?.price ?? Infinity;
     const pb = b.best?.effective?.mine ?? b.best?.price ?? Infinity;
     return pa - pb;
@@ -142,17 +145,8 @@ export async function titleFromUrl(url: string): Promise<string | undefined> {
     pick(/"@type"\s*:\s*"Product"[\s\S]{0,400}?"name"\s*:\s*"([^"]+)"/) ??
     pick(/<span[^>]+id=["']productTitle["'][^>]*>\s*([^<]+)/i) ??
     pick(/<title[^>]*>([^<]+)/i);
-  return raw ? cleanStoreTitle(decodeEntities(raw)) : undefined;
-}
-
-export function cleanStoreTitle(t: string): string {
-  return t
-    .replace(/\s*[:|-]\s*(Amazon\.in|Flipkart\.com|Nykaa|Myntra|Meesho|Croma|Ajio|Tata CLiQ|Reliance Digital)\b.*$/i, '')
-    .replace(/^Buy\s+/i, '')
-    .replace(/\s*-\s*Price in India.*$/i, '')
-    .replace(/\s+(Online )?at (Best|Lowest) Price.*$/i, '')
-    .replace(/\s*:\s*[A-Z][\w &]+$/, '') // Amazon's trailing ": Beauty"
-    .trim();
+  const title = raw && cleanStoreTitle(decodeEntities(raw));
+  return isProductTitle(title) ? title : undefined;
 }
 
 function decodeEntities(s: string): string {
@@ -169,9 +163,10 @@ function decodeEntities(s: string): string {
 export async function resolveInput(text: string): Promise<{ query: string; ref: Reference; from: 'text' | 'link' }> {
   const url = extractUrl(text);
   if (!url) return { query: text.trim(), ref: makeReference(text.trim(), 'query'), from: 'text' };
-  // Shared text often already contains the title: "Check out Lakme Sunscreen ... https://amzn.in/d/x"
-  const around = text.replace(url, ' ').replace(/check (this|out)( this)?( product)?( on \w+)?[:!]?/i, ' ').trim();
-  const title = around.length > 15 ? around : await titleFromUrl(url);
+  // The product page's own title is the most reliable (it has the brand; share messages often don't).
+  // The share message is the fallback when the page can't be read.
+  const shared = cleanSharedText(text);
+  const title = (await titleFromUrl(url).catch(() => undefined)) ?? (shared.length > 10 ? shared : undefined);
   if (!title) throw new Error('Is link se product ka naam nahi mila. Product ka naam type karke search karo.');
   return { query: condenseTitle(title), ref: makeReference(title, 'product'), from: 'link' };
 }

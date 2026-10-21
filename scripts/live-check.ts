@@ -1,16 +1,18 @@
 // Live health check: search every site for real, from this phone, and print a table.
 // Usage: npm run live -- "boat airdopes 141"           (add --save to refresh test fixtures)
+//        npm run live -- "<shared text or product link>"  (checks the Share flow: page title → product-mode match)
 import { readFileSync, writeFileSync } from 'node:fs';
 import { parseHTML } from 'linkedom';
 import { effectivePrice } from '../src/core/effectivePrice.ts';
-import { detectCategories, makeReference, pickBest, scoreListings } from '../src/core/matcher.ts';
+import { condenseTitle, detectCategories, makeReference, pickBest, scoreListings } from '../src/core/matcher.ts';
 import { dedupeOffers, harvestOffers } from '../src/core/offers.ts';
 import { buildRequest, parseResponse } from '../src/core/parse.ts';
+import { cleanSharedText, cleanStoreTitle, isProductTitle } from '../src/core/share.ts';
 import type { Offer, SiteConfig, UserCard } from '../src/core/types.ts';
 
 const args = process.argv.slice(2);
 const save = args.includes('--save');
-const query = args.filter((a) => !a.startsWith('--')).join(' ') || 'lakme sunscreen spf 50';
+const input = args.filter((a) => !a.startsWith('--')).join(' ') || 'lakme sunscreen spf 50';
 const cards: UserCard[] = [{ bank: 'hdfc', type: 'credit' }, { bank: 'axis', type: 'credit', card: 'flipkart-axis' }];
 
 const sites = JSON.parse(readFileSync('config/sites.json', 'utf8')).sites as SiteConfig[];
@@ -18,8 +20,21 @@ const staticOffers = (JSON.parse(readFileSync('config/offers.json', 'utf8')).off
 const UA = 'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36';
 const headers = { 'User-Agent': UA, 'Accept-Language': 'en-IN,en;q=0.9', Accept: 'text/html,application/json;q=0.9,*/*;q=0.8' };
 
+// Same steps as resolveInput() in the app, using node's fetch.
+const link = input.match(/https?:\/\/\S+/)?.[0];
+let title: string | undefined;
+if (link) {
+  const html = await fetch(link, { headers }).then((r) => r.text()).catch(() => '');
+  const raw = html.match(/<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)/i)?.[1] ?? html.match(/<title[^>]*>([^<]+)/i)?.[1];
+  const page = raw && cleanStoreTitle(raw.replace(/&amp;/g, '&'));
+  const shared = cleanSharedText(input);
+  title = isProductTitle(page) ? page : shared.length > 10 ? shared : undefined;
+  console.log(`Page title: ${page ?? '-'}\nShared text: ${shared || '-'}`);
+  if (!title) throw new Error('No product name from this link');
+}
+const query = title ? condenseTitle(title) : input;
 const cats = detectCategories(query);
-const ref = makeReference(query, 'query');
+const ref = title ? makeReference(title, 'product') : makeReference(query, 'query');
 console.log(`Query: "${query}"  categories: ${cats.join(', ')}\n`);
 
 const rows = await Promise.all(

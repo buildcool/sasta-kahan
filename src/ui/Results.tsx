@@ -14,7 +14,9 @@ export function Results({ results, hasCards, onCompareExact }: Props) {
   const found = results.filter((r) => r.best);
   const rest = results.filter((r) => !r.best);
   const cheapest = found[0]?.best;
-  const costliest = found.length > 1 ? Math.max(...found.map((r) => r.best!.effective?.mine ?? r.best!.price)) : undefined;
+  // Only compare like with like: a "similar" item elsewhere isn't a saving on this product.
+  const peers = found.filter((r) => r.best!.match === cheapest?.match);
+  const costliest = peers.length > 1 ? Math.max(...peers.map((r) => r.best!.effective?.mine ?? r.best!.price)) : undefined;
   const loading = results.some((r) => r.status === 'loading');
 
   return (
