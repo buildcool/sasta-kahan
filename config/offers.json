@@ -1,0 +1,31 @@
+{
+  "version": 1,
+  "updated": "2026-10-21",
+  "note": "Standing card rewards that apply on every order (not on product pages). Values are typical; always verify on the site/card terms. Edit this file on GitHub to update the app without a new APK.",
+  "offers": [
+    { "site": "amazon", "card": "amazon-pay-icici", "bank": "icici", "cardType": "credit", "kind": "percent", "cashback": true, "value": 5, "text": "5% back with Amazon Pay ICICI card (Prime members; 3% for non-Prime)" },
+    { "site": "amazon", "card": "hdfc-millennia", "bank": "hdfc", "cardType": "credit", "kind": "percent", "cashback": true, "value": 5, "cap": 1000, "text": "5% cashback with HDFC Millennia (capped ₹1,000/month)" },
+    { "site": "amazon", "card": "sbi-cashback", "bank": "sbi", "cardType": "credit", "kind": "percent", "cashback": true, "value": 5, "cap": 5000, "text": "5% online cashback with SBI Cashback card (capped ₹5,000/month)" },
+
+    { "site": "flipkart", "card": "flipkart-axis", "bank": "axis", "cardType": "credit", "kind": "percent", "cashback": true, "value": 5, "text": "5% unlimited cashback with Flipkart Axis Bank card" },
+    { "site": "flipkart", "card": "flipkart-sbi", "bank": "sbi", "cardType": "credit", "kind": "percent", "cashback": true, "value": 5, "text": "5% cashback with Flipkart SBI card" },
+    { "site": "flipkart", "card": "hdfc-millennia", "bank": "hdfc", "cardType": "credit", "kind": "percent", "cashback": true, "value": 5, "cap": 1000, "text": "5% cashback with HDFC Millennia (capped ₹1,000/month)" },
+    { "site": "flipkart", "card": "sbi-cashback", "bank": "sbi", "cardType": "credit", "kind": "percent", "cashback": true, "value": 5, "cap": 5000, "text": "5% online cashback with SBI Cashback card" },
+
+    { "site": "myntra", "card": "myntra-kotak", "bank": "kotak", "cardType": "credit", "kind": "percent", "value": 7.5, "cap": 750, "text": "7.5% instant discount with Myntra Kotak card (up to ₹750/order)" },
+    { "site": "myntra", "card": "flipkart-axis", "bank": "axis", "cardType": "credit", "kind": "percent", "cashback": true, "value": 7.5, "text": "7.5% cashback on Myntra with Flipkart Axis Bank card" },
+    { "site": "myntra", "card": "flipkart-sbi", "bank": "sbi", "cardType": "credit", "kind": "percent", "cashback": true, "value": 7.5, "text": "7.5% cashback on Myntra with Flipkart SBI card" },
+    { "site": "myntra", "card": "hdfc-millennia", "bank": "hdfc", "cardType": "credit", "kind": "percent", "cashback": true, "value": 5, "cap": 1000, "text": "5% cashback with HDFC Millennia" },
+    { "site": "myntra", "card": "sbi-cashback", "bank": "sbi", "cardType": "credit", "kind": "percent", "cashback": true, "value": 5, "cap": 5000, "text": "5% online cashback with SBI Cashback card" },
+
+    { "site": "tatacliq", "card": "tata-neu-hdfc", "bank": "hdfc", "cardType": "credit", "kind": "percent", "cashback": true, "value": 5, "text": "5% NeuCoins with Tata Neu Infinity HDFC card (2% on Plus)" },
+    { "site": "croma", "card": "tata-neu-hdfc", "bank": "hdfc", "cardType": "credit", "kind": "percent", "cashback": true, "value": 5, "text": "5% NeuCoins with Tata Neu Infinity HDFC card (2% on Plus)" },
+
+    { "site": "nykaa", "card": "sbi-cashback", "bank": "sbi", "cardType": "credit", "kind": "percent", "cashback": true, "value": 5, "cap": 5000, "text": "5% online cashback with SBI Cashback card" },
+    { "site": "ajio", "card": "sbi-cashback", "bank": "sbi", "cardType": "credit", "kind": "percent", "cashback": true, "value": 5, "cap": 5000, "text": "5% online cashback with SBI Cashback card" },
+    { "site": "meesho", "card": "sbi-cashback", "bank": "sbi", "cardType": "credit", "kind": "percent", "cashback": true, "value": 5, "cap": 5000, "text": "5% online cashback with SBI Cashback card" },
+    { "site": "reliance", "card": "sbi-cashback", "bank": "sbi", "cardType": "credit", "kind": "percent", "cashback": true, "value": 5, "cap": 5000, "text": "5% online cashback with SBI Cashback card" },
+    { "site": "croma", "card": "sbi-cashback", "bank": "sbi", "cardType": "credit", "kind": "percent", "cashback": true, "value": 5, "cap": 5000, "text": "5% online cashback with SBI Cashback card" },
+    { "site": "tatacliq", "card": "sbi-cashback", "bank": "sbi", "cardType": "credit", "kind": "percent", "cashback": true, "value": 5, "cap": 5000, "text": "5% online cashback with SBI Cashback card" }
+  ]
+}

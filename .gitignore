@@ -1,0 +1,9 @@
+node_modules/
+dist/
+*.log
+.DS_Store
+# signing keys never go in git
+*.p12
+*.jks
+*.keystore
+password.txt

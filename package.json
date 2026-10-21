@@ -1,0 +1,37 @@
+{
+  "name": "sasta-kahan",
+  "version": "1.0.0",
+  "description": "Compare product prices and bank offers across Indian shopping sites",
+  "scripts": {
+    "test": "node node_modules/vitest/vitest.mjs run",
+    "dev": "node node_modules/vite/bin/vite.js",
+    "build": "node node_modules/typescript/bin/tsc && node node_modules/vite/bin/vite.js build",
+    "typecheck": "node node_modules/typescript/bin/tsc",
+    "probe": "node scripts/probe-fixtures.ts",
+    "live": "node scripts/live-check.ts",
+    "cap": "node node_modules/@capacitor/cli/bin/capacitor"
+  },
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "dependencies": {
+    "@capacitor/android": "^8.5.3",
+    "@capacitor/app": "^8.1.2",
+    "@capacitor/core": "^8.5.3",
+    "@capacitor/local-notifications": "^8.3.1",
+    "@capacitor/preferences": "^8.0.1",
+    "@capacitor/share": "^8.0.3",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^8.5.3",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.2",
+    "linkedom": "^0.18.14",
+    "typescript": "^5.9.3",
+    "vite": "^8.3.5",
+    "vitest": "^5.0.5"
+  }
+}

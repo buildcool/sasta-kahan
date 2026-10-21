@@ -1,0 +1,175 @@
+{
+  "version": 1,
+  "sites": [
+    {
+      "id": "amazon",
+      "name": "Amazon",
+      "base": "https://www.amazon.in",
+      "search": "https://www.amazon.in/s?k={q}",
+      "categories": ["beauty", "fashion", "electronics", "grocery", "home", "general"],
+      "selectors": {
+        "item": "[data-component-type=s-search-result]",
+        "title": "h2[aria-label]",
+        "titleAttr": "aria-label",
+        "brand": "h2:not([aria-label])",
+        "price": ".a-price:not(.a-text-price) .a-offscreen",
+        "mrp": ".a-price[data-a-strike] .a-offscreen",
+        "link": "a[href*='/dp/']",
+        "idAttr": "data-asin",
+        "urlTemplate": "/dp/{id}",
+        "image": "img.s-image",
+        "rating": "[aria-label*='out of 5'], .a-icon-alt"
+      },
+      "blockedMarkers": ["Enter the characters you see below", "api-services-support@amazon.com"]
+    },
+    {
+      "id": "flipkart",
+      "name": "Flipkart",
+      "base": "https://www.flipkart.com",
+      "search": "https://www.flipkart.com/search?q={q}",
+      "categories": ["beauty", "fashion", "electronics", "grocery", "home", "general"],
+      "json": {
+        "name": ["titles.title"],
+        "brand": ["productBrand"],
+        "extra": ["titles.subtitle"],
+        "price": ["pricing.displayPrice", "pricing.finalPrice"],
+        "mrp": ["pricing.strikeOffPrice", "pricing.mrp"],
+        "url": [],
+        "urlTemplate": "/product/p/itme?pid={productMeta.productId}",
+        "image": ["images.0.imageUrl", "media.images.0.url"],
+        "rating": ["rating.average"]
+      },
+      "blockedMarkers": ["Are you a human", "recaptcha"]
+    },
+    {
+      "id": "nykaa",
+      "name": "Nykaa",
+      "base": "https://www.nykaa.com",
+      "search": "https://www.nykaa.com/search/result/?q={q}",
+      "categories": ["beauty", "fashion"]
+    },
+    {
+      "id": "myntra",
+      "name": "Myntra",
+      "base": "https://www.myntra.com",
+      "search": "https://www.myntra.com/{q}",
+      "slugQuery": true,
+      "categories": ["beauty", "fashion", "home"],
+      "json": {
+        "name": ["productInfo.additionalInfo"],
+        "brand": ["productInfo.brand"],
+        "price": ["productInfo.priceInfo.price"],
+        "mrp": ["productInfo.priceInfo.mrp"],
+        "url": [],
+        "urlTemplate": "/{styleId}",
+        "image": ["productImage.productMedia.0.src"],
+        "rating": ["productInfo.ratingInfo.rating"]
+      }
+    },
+    {
+      "id": "meesho",
+      "name": "Meesho",
+      "base": "https://www.meesho.com",
+      "search": "https://www.meesho.com/api/v1/products/search",
+      "manual": "https://www.meesho.com/search?q={q}",
+      "request": {
+        "method": "POST",
+        "headers": { "Content-Type": "application/json", "Accept": "application/json" },
+        "body": "{\"query\":\"{q}\",\"type\":\"text_search\",\"page\":1,\"offset\":0,\"limit\":20,\"isDevicePhone\":true}"
+      },
+      "categories": ["beauty", "fashion", "home", "general"],
+      "json": {
+        "name": ["name"],
+        "price": ["min_product_price", "min_catalog_price"],
+        "mrp": ["original_price"],
+        "url": [],
+        "urlTemplate": "/{slug}/p/{product_id}",
+        "image": ["image"],
+        "rating": ["catalog_reviews_summary.average_rating"]
+      }
+    },
+    {
+      "id": "ajio",
+      "name": "Ajio",
+      "base": "https://www.ajio.com",
+      "search": "https://www.ajio.com/search/?text={q}",
+      "categories": ["beauty", "fashion"],
+      "json": { "brand": ["fnlColorVariantData.brandName", "brandName"], "mrp": ["wasPriceData.value", "mrp"] }
+    },
+    {
+      "id": "tatacliq",
+      "name": "Tata CLiQ",
+      "base": "https://www.tatacliq.com",
+      "search": "https://www.tatacliq.com/search/?searchCategory=all&text={q}",
+      "categories": ["beauty", "fashion", "electronics", "home"]
+    },
+    {
+      "id": "reliance",
+      "name": "Reliance Digital",
+      "base": "https://www.reliancedigital.in",
+      "search": "https://www.reliancedigital.in/ext/raven-api/catalog/v1.0/products?q={q}&page_size=20",
+      "manual": "https://www.reliancedigital.in/products?q={q}",
+      "request": { "headers": { "Accept": "application/json" } },
+      "categories": ["electronics", "home"],
+      "json": {
+        "name": ["name"],
+        "brand": ["brand.name"],
+        "price": ["price.effective.min"],
+        "mrp": ["price.marked.min"],
+        "url": [],
+        "urlTemplate": "/product/{slug}",
+        "image": ["medias.0.url"],
+        "rating": ["rating"]
+      }
+    },
+    {
+      "id": "croma",
+      "name": "Croma",
+      "base": "https://www.croma.com",
+      "search": "https://api.croma.com/searchservices/v1/search?currentPage=0&query={q}:relevance&fields=FULL&channel=WEB&channelCode=400049",
+      "manual": "https://www.croma.com/searchB?q={q}",
+      "request": { "headers": { "Accept": "application/json", "Origin": "https://www.croma.com", "Referer": "https://www.croma.com/" } },
+      "categories": ["electronics", "home"],
+      "json": {
+        "name": ["name"],
+        "price": ["price.value"],
+        "mrp": ["mrp.value"],
+        "url": ["url"],
+        "image": ["plpImage"],
+        "rating": ["finalReviewRating", "averageRating"]
+      }
+    },
+    {
+      "id": "vijaysales",
+      "name": "Vijay Sales",
+      "base": "https://www.vijaysales.com",
+      "search": "https://www.vijaysales.com/search-listing?q={q}",
+      "categories": ["electronics", "home"],
+      "fetch": false
+    },
+    {
+      "id": "jiomart",
+      "name": "JioMart",
+      "base": "https://www.jiomart.com",
+      "search": "https://www.jiomart.com/search/{q}",
+      "categories": ["grocery", "beauty", "electronics", "home", "general"],
+      "fetch": false
+    },
+    {
+      "id": "purplle",
+      "name": "Purplle",
+      "base": "https://www.purplle.com",
+      "search": "https://www.purplle.com/search?q={q}",
+      "categories": ["beauty"],
+      "fetch": false
+    },
+    {
+      "id": "smytten",
+      "name": "Smytten",
+      "base": "https://smytten.com",
+      "search": "https://smytten.com/shop/search?q={q}",
+      "categories": ["beauty"],
+      "fetch": false
+    }
+  ]
+}
