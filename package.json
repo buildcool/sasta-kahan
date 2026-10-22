@@ -1,15 +1,16 @@
 {
   "name": "sasta-kahan",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Compare product prices and bank offers across Indian shopping sites",
   "scripts": {
     "test": "node node_modules/vitest/vitest.mjs run",
     "dev": "node node_modules/vite/bin/vite.js",
-    "build": "node node_modules/typescript/bin/tsc && node node_modules/vite/bin/vite.js build",
+    "build": "node node_modules/typescript/bin/tsc && node node_modules/vite/bin/vite.js build && node node_modules/vite/bin/vite.js build --config vite.runner.config.ts",
     "typecheck": "node node_modules/typescript/bin/tsc",
     "probe": "node scripts/probe-fixtures.ts",
     "live": "node scripts/live-check.ts",
-    "cap": "node node_modules/@capacitor/cli/bin/capacitor"
+    "cap": "node node_modules/@capacitor/cli/bin/capacitor",
+    "test:runner": "sh scripts/runner-qjs/run.sh"
   },
   "author": "",
   "license": "ISC",
@@ -17,6 +18,8 @@
   "dependencies": {
     "@capacitor/android": "^8.5.3",
     "@capacitor/app": "^8.1.2",
+    "@capacitor/background-runner": "^3.0.0",
+    "@capacitor/clipboard": "^8.0.1",
     "@capacitor/core": "^8.5.3",
     "@capacitor/local-notifications": "^8.3.1",
     "@capacitor/preferences": "^8.0.1",

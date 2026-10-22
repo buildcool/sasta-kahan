@@ -65,7 +65,13 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "v1.0.${{ github.run_number }}" "$RUNNER_TEMP/SastaKahan.apk" \
-            --title "SastaKahan 1.0.${{ github.run_number }}" \
-            --notes "Download SastaKahan.apk on your phone and install it." \
+          version="1.1.${{ github.run_number }}"
+          {
+            echo "Download **SastaKahan.apk** on your phone and install it (it updates the app you already have)."
+            echo
+            if [ -f release-notes.md ]; then cat release-notes.md; fi
+          } > "$RUNNER_TEMP/notes.md"
+          gh release create "v$version" "$RUNNER_TEMP/SastaKahan.apk" \
+            --title "SastaKahan $version" \
+            --notes-file "$RUNNER_TEMP/notes.md" \
             --latest

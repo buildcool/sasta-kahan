@@ -1,0 +1,23 @@
+name: Publish config
+
+# config/*.json reach installed apps through jsDelivr, which caches files for up to 12 hours.
+# Purge that cache right after a change so phones pick it up on their next refresh (≤ 6 h).
+on:
+  push:
+    branches: [main]
+    paths: ['config/**']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  purge:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Purge jsDelivr cache
+        run: |
+          for f in sites.json offers.json; do
+            curl -fsS "https://purge.jsdelivr.net/gh/${{ github.repository }}@main/config/$f"
+            echo
+          done

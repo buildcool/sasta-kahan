@@ -73,3 +73,42 @@ describe('blocked pages', () => {
     expect(r.status).toBe('blocked');
   });
 });
+
+describe('coupon prices, stock and rating counts', () => {
+  const parse = (id: string) => parseResponse(site(id), fixture(`search-${id}`), parseHtml).listings;
+
+  it('Ajio: the price is the real price, offerPrice is the coupon price', () => {
+    const l = parse('ajio').find((x) => x.url.includes('4900024890'))!;
+    expect(l.price).toBe(331);
+    expect(l.coupon?.price).toBe(298);
+  });
+  it('Myntra: "Best Price ₹348 with coupon"', () => {
+    const l = parse('myntra').find((x) => x.coupon?.price === 348)!;
+    expect(l.price).toBe(465);
+    expect(l.coupon?.text).toBe('Best Price ₹348 with coupon');
+  });
+  it('Amazon: "Buy for ₹273 with coupon"', () => {
+    expect(parse('amazon').some((x) => x.coupon?.price === 273)).toBe(true);
+  });
+  it('rating counts', () => {
+    expect(parse('amazon').some((x) => x.ratingCount === 17974)).toBe(true);
+    expect(parse('flipkart').some((x) => x.ratingCount === 34456)).toBe(true);
+    expect(parse('myntra').some((x) => x.ratingCount === 12300)).toBe(true);
+  });
+  it('stock flags', () => {
+    expect(parse('nykaa').every((x) => x.inStock === true)).toBe(true);
+    expect(parse('tatacliq').some((x) => x.inStock === true)).toBe(true);
+    expect(parse('reliance').some((x) => x.inStock === true)).toBe(true);
+  });
+});
+
+describe('empty pages', () => {
+  it('Amazon page with no products and no "No results" message is a failed check, not "not found"', () => {
+    const r = parseResponse(site('amazon'), '<html><body><div id="search"></div></body></html>', parseHtml);
+    expect(r).toMatchObject({ status: 'blocked', reason: 'empty-page' });
+  });
+  it('Amazon "No results for" is a real empty result', () => {
+    const r = parseResponse(site('amazon'), '<html><body>No results for xyzzy.</body></html>', parseHtml);
+    expect(r.status).toBe('empty');
+  });
+});

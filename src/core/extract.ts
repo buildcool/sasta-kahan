@@ -7,11 +7,13 @@
 import type { Listing, SiteConfig } from './types.ts';
 
 const NAME_KEYS = ['name', 'title', 'productName', 'product_name', 'display_name', 'displayName', 'productTitle', 'modelName', 'brandName'];
-const PRICE_KEYS = ['sellingPrice', 'selling_price', 'offerPrice', 'offer_price', 'finalPrice', 'final_price', 'discountedPrice', 'discounted_price', 'specialPrice', 'salePrice', 'effectivePrice', 'price', 'lowPrice', 'value'];
+// Not "offerPrice": on Ajio that's the price after a coupon (see SiteConfig.json.coupon).
+const PRICE_KEYS = ['sellingPrice', 'selling_price', 'finalPrice', 'final_price', 'discountedPrice', 'discounted_price', 'specialPrice', 'salePrice', 'effectivePrice', 'price', 'lowPrice', 'value'];
 const MRP_KEYS = ['mrp', 'MRP', 'maxRetailPrice', 'listPrice', 'list_price', 'originalPrice', 'strikePrice', 'marked', 'regular_price', 'regularPrice'];
 const URL_KEYS = ['url', 'productUrl', 'product_url', 'landingPageUrl', 'slug', 'webUrl', 'link', 'href', 'actionUrl', 'seoUrl', 'pdpUrl'];
 const IMG_KEYS = ['image', 'imageUrl', 'image_url', 'imgUrl', 'searchImage', 'thumbnail', 'img', 'imageURL', 'primaryImage', 'images', 'media'];
 const RATING_KEYS = ['rating', 'averageRating', 'avgRating', 'ratingValue', 'average_rating'];
+const RATING_COUNT_KEYS = ['ratingCount', 'rating_count', 'ratingsCount', 'numberOfRatings', 'totalRatings', 'reviewCount'];
 
 /** Pull every JSON value we can find out of the page's <script> tags. */
 export function extractJsonBlobs(html: string): unknown[] {
@@ -97,6 +99,46 @@ export function toNumber(v: unknown): number | undefined {
   return undefined;
 }
 
+/** "17,974" / "12.3k" / "3.9K+" / 703 → a number of ratings. */
+export function toCount(v: unknown): number | undefined {
+  if (typeof v === 'number') return Number.isFinite(v) && v > 0 ? Math.round(v) : undefined;
+  if (typeof v !== 'string') return undefined;
+  const m = v.replace(/,/g, '').match(/(\d+(?:\.\d+)?)\s*([kKlL]|lakh)?/);
+  if (!m) return undefined;
+  const mult = !m[2] ? 1 : /k/i.test(m[2]) ? 1000 : 100000;
+  return Math.round(parseFloat(m[1]) * mult) || undefined;
+}
+
+/** In stock? From the usual flags; undefined when the site doesn't say. */
+export function stockOf(o: Record<string, unknown>): boolean | undefined {
+  for (const k of ['inStock', 'in_stock', 'isInStock', 'is_in_stock', 'isAvailable', 'is_available', 'sellable']) {
+    if (typeof o[k] === 'boolean') return o[k] as boolean;
+  }
+  for (const k of ['outOfStock', 'out_of_stock', 'isOutOfStock', 'is_out_of_stock', 'soldOut', 'isSoldOut', 'sold_out']) {
+    if (typeof o[k] === 'boolean') return !o[k];
+  }
+  const offers = Array.isArray(o.offers) ? o.offers[0] : o.offers;
+  const av = o.availability ?? o.stockStatus ?? o.inventoryStatus ?? (offers as Record<string, unknown> | undefined)?.availability;
+  const text = typeof av === 'string' ? av : av && typeof av === 'object' ? String((av as Record<string, unknown>).displayState ?? '') : '';
+  if (/out[\s_-]?of[\s_-]?stock|sold[\s_-]?out|unavailable|discontinued/i.test(text)) return false;
+  if (/in[\s_-]?stock|available/i.test(text)) return true;
+  return undefined;
+}
+
+/** Rupee amount in a coupon value: 298, {value: 298}, or "Best Price ₹348 with coupon". */
+function couponPrice(v: unknown): number | undefined {
+  if (typeof v === 'string') {
+    const m = v.replace(/<[^>]*>/g, ' ').replace(/,/g, '').match(/(?:₹|rs\.?)\s*(\d+(?:\.\d+)?)/i);
+    return m ? parseFloat(m[1]) : undefined;
+  }
+  return toNumber(v);
+}
+
+/** Accept a coupon price only when it's a real, believable saving. */
+export function sanePrice(coupon: number | undefined, price: number): number | undefined {
+  return coupon && coupon < price && coupon >= price * 0.3 ? coupon : undefined;
+}
+
 /** Read `a.b.0.c` style paths; plain keys work too. */
 export function getPath(o: unknown, path: string): unknown {
   if (!path.includes('.')) return (o as Record<string, unknown>)?.[path];
@@ -152,15 +194,13 @@ function pickPrice(o: Record<string, unknown>, keys: string[]): number | undefin
 
 export function absolutize(url: string | undefined, base: string): string | undefined {
   if (!url) return undefined;
-  url = url.replace(/&amp;/g, '&').replace(/&#x2F;/g, '/').replace(/&#x3D;/g, '=');
+  url = url.trim().replace(/&amp;/g, '&').replace(/&#x2F;/g, '/').replace(/&#x3D;/g, '=');
   if (url.startsWith('//')) return 'https:' + url;
   if (/^https?:\/\//.test(url)) return url;
   if (/^www\./.test(url)) return 'https://' + url;
-  try {
-    return new URL(url.startsWith('/') ? url : '/' + url, base).toString();
-  } catch {
-    return undefined;
-  }
+  if (/^[a-z]+:/i.test(url) || /\s/.test(url)) return undefined; // javascript:, data:, junk
+  // No URL class here: the background checker's JS engine doesn't have one.
+  return base.replace(/\/+$/, '') + (url.startsWith('/') ? url : '/' + url);
 }
 
 /** Walk any JSON value and collect product-shaped objects. */
@@ -203,7 +243,9 @@ export function findProducts(root: unknown, site: SiteConfig): Listing[] {
         const extra = getPath(o, k);
         if (typeof extra === 'string' && extra && !fullTitle.includes(extra)) fullTitle += `, ${extra}`;
       }
-      found.push({
+      const couponRaw = site.json?.coupon ? pick(o, site.json.coupon) : undefined;
+      const coupon = sanePrice(couponPrice(couponRaw), price);
+      const listing: Listing = {
         site: site.id,
         title: fullTitle,
         price,
@@ -211,7 +253,11 @@ export function findProducts(root: unknown, site: SiteConfig): Listing[] {
         url: absolutize(url, site.base)!,
         image: absolutize(pickString(o, site.json?.image ?? IMG_KEYS), site.base),
         rating: toNumber(pick(o, site.json?.rating ?? RATING_KEYS)),
-      });
+        ratingCount: toCount(pick(o, site.json?.ratingCount ?? RATING_COUNT_KEYS)),
+        inStock: stockOf(o),
+      };
+      if (coupon) listing.coupon = { price: coupon, text: typeof couponRaw === 'string' ? couponRaw.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim() : 'with coupon' };
+      found.push(listing);
     }
     for (const k in o) visit(o[k], depth + 1);
   };
@@ -238,7 +284,9 @@ export function extractWithSelectors(doc: Document, site: SiteConfig): Listing[]
     }
     const mrp = s.mrp ? toNumber(el.querySelector(s.mrp)?.textContent) : undefined;
     const img = s.image ? el.querySelector(s.image) : null;
-    out.push({
+    const text = (el.textContent ?? '').replace(/\s+/g, ' ');
+    const rc = s.ratingCount ? el.querySelector(s.ratingCount) : null;
+    const listing: Listing = {
       site: site.id,
       title,
       price,
@@ -246,10 +294,27 @@ export function extractWithSelectors(doc: Document, site: SiteConfig): Listing[]
       url: absolutize(url, site.base)!,
       image: absolutize(img?.getAttribute('src') ?? img?.getAttribute('data-src') ?? undefined, site.base),
       rating: s.rating ? toNumber(el.querySelector(s.rating)?.textContent?.split(' ')[0]) : undefined,
-      sponsored: title !== rawTitle || /\bSponsored\b/.test(el.textContent ?? ''),
-    });
+      ratingCount: toCount(rc?.getAttribute('aria-label') ?? rc?.textContent ?? undefined),
+      sponsored: title !== rawTitle || /\bSponsored\b/.test(text),
+    };
+    if (/currently unavailable|temporarily out of stock|\bout of stock\b/i.test(text)) listing.inStock = false;
+    const coupon = sanePrice(couponFromText(text, price), price);
+    if (coupon) listing.coupon = { price: coupon, text: text.match(/(?:buy|get it) for[^.]*?with coupon|save [^.]*?with coupon/i)?.[0] ?? 'with coupon' };
+    out.push(listing);
   }
   return out.filter((l) => l.url);
+}
+
+/** "Buy for ₹273 with coupon" / "Save ₹50 with coupon" / "Save 5% with coupon" (Amazon). */
+export function couponFromText(text: string, price: number): number | undefined {
+  const t = text.replace(/,/g, '');
+  const buy = t.match(/(?:buy|get it) for\s*₹\s*(\d+(?:\.\d+)?)\s*with coupon/i);
+  if (buy) return parseFloat(buy[1]);
+  const flat = t.match(/save\s*₹\s*(\d+(?:\.\d+)?)\s*with coupon/i);
+  if (flat) return price - parseFloat(flat[1]);
+  const pct = t.match(/save\s*(\d+(?:\.\d+)?)\s*%\s*with coupon/i);
+  if (pct) return Math.round(price * (1 - parseFloat(pct[1]) / 100) * 100) / 100;
+  return undefined;
 }
 
 /** Remove duplicates (same URL, or same title at same price) and junk. */
@@ -265,13 +330,11 @@ export function dedupe(list: Listing[]): Listing[] {
 }
 
 export function canonicalUrl(url: string): string {
-  try {
-    const u = new URL(url);
-    const dp = u.pathname.match(/\/dp\/([A-Z0-9]{10})/);
-    if (dp) return `${u.host}/dp/${dp[1]}`;
-    const pid = u.searchParams.get('pid');
-    return u.host + u.pathname.replace(/\/+$/, '') + (pid ? `?pid=${pid}` : '');
-  } catch {
-    return url;
-  }
+  const m = url.match(/^https?:\/\/([^/?#]+)([^?#]*)(\?[^#]*)?/i);
+  if (!m) return url;
+  const [, host, path, query = ''] = m;
+  const dp = path.match(/\/dp\/([A-Z0-9]{10})/);
+  if (dp) return `${host}/dp/${dp[1]}`;
+  const pid = query.match(/[?&]pid=([^&]+)/)?.[1];
+  return host + path.replace(/\/+$/, '') + (pid ? `?pid=${pid}` : '');
 }

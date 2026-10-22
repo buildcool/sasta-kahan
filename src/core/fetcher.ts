@@ -1,7 +1,8 @@
 import { Capacitor, CapacitorHttp } from '@capacitor/core';
 import type { SiteRequest } from './parse.ts';
+import type { FetchResult } from './search.ts';
 
-const UA = 'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36';
+export const UA = 'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36';
 const TIMEOUT_MS = 12000;
 
 const BASE_HEADERS: Record<string, string> = {
@@ -9,11 +10,6 @@ const BASE_HEADERS: Record<string, string> = {
   'Accept-Language': 'en-IN,en;q=0.9',
   Accept: 'text/html,application/xhtml+xml,application/json;q=0.9,*/*;q=0.8',
 };
-
-export interface FetchResult {
-  status: number;
-  body: string;
-}
 
 /**
  * Fetch a page from the user's own phone.

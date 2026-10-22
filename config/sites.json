@@ -1,5 +1,6 @@
 {
-  "version": 1,
+  "version": 2,
+  "updated": "2026-10-22",
   "sites": [
     {
       "id": "amazon",
@@ -7,6 +8,7 @@
       "base": "https://www.amazon.in",
       "search": "https://www.amazon.in/s?k={q}",
       "categories": ["beauty", "fashion", "electronics", "grocery", "home", "general"],
+      "app": "in.amazon.mShop.android.shopping",
       "selectors": {
         "item": "[data-component-type=s-search-result]",
         "title": "h2[aria-label]",
@@ -18,9 +20,18 @@
         "idAttr": "data-asin",
         "urlTemplate": "/dp/{id}",
         "image": "img.s-image",
-        "rating": "[aria-label*='out of 5'], .a-icon-alt"
+        "rating": "[aria-label*='out of 5'], .a-icon-alt",
+        "ratingCount": "[aria-label$=' ratings'], [aria-label$=' rating']"
       },
-      "blockedMarkers": ["Enter the characters you see below", "api-services-support@amazon.com"]
+      "blockedMarkers": ["Enter the characters you see below", "api-services-support@amazon.com"],
+      "emptyMarkers": ["No results for", "did not match any products", "Try checking your spelling"],
+      "fees": {
+        "delivery": 40,
+        "freeAbove": 499,
+        "freeWith": ["prime"],
+        "note": "Free delivery on orders of ₹499+ fulfilled by Amazon, or with Prime. Below that usually ₹40; seller-shipped items set their own charge.",
+        "verified": "2026-10-22"
+      }
     },
     {
       "id": "flipkart",
@@ -28,6 +39,7 @@
       "base": "https://www.flipkart.com",
       "search": "https://www.flipkart.com/search?q={q}",
       "categories": ["beauty", "fashion", "electronics", "grocery", "home", "general"],
+      "app": "com.flipkart.android",
       "json": {
         "name": ["titles.title"],
         "brand": ["productBrand"],
@@ -37,16 +49,26 @@
         "url": [],
         "urlTemplate": "/product/p/itme?pid={productMeta.productId}",
         "image": ["images.0.imageUrl", "media.images.0.url"],
-        "rating": ["rating.average"]
+        "rating": ["rating.average"],
+        "ratingCount": ["rating.count"]
       },
-      "blockedMarkers": ["Are you a human", "recaptcha"]
+      "blockedMarkers": ["Are you a human", "recaptcha"],
+      "fees": { "note": "Flipkart may add a platform fee and a delivery charge on small orders; they are shown at checkout.", "verified": "2026-10-22" }
     },
     {
       "id": "nykaa",
       "name": "Nykaa",
       "base": "https://www.nykaa.com",
       "search": "https://www.nykaa.com/search/result/?q={q}",
-      "categories": ["beauty", "fashion"]
+      "categories": ["beauty", "fashion"],
+      "app": "com.fsn.nykaa",
+      "fees": {
+        "delivery": 70,
+        "freeAbove": 299,
+        "freeWith": ["nykaa-prive"],
+        "note": "₹70 delivery on orders below ₹299 (free for Prive Gold/Platinum).",
+        "verified": "2026-10-22"
+      }
     },
     {
       "id": "myntra",
@@ -55,6 +77,7 @@
       "search": "https://www.myntra.com/{q}",
       "slugQuery": true,
       "categories": ["beauty", "fashion", "home"],
+      "app": "com.myntra.android",
       "json": {
         "name": ["productInfo.additionalInfo"],
         "brand": ["productInfo.brand"],
@@ -63,8 +86,11 @@
         "url": [],
         "urlTemplate": "/{styleId}",
         "image": ["productImage.productMedia.0.src"],
-        "rating": ["productInfo.ratingInfo.rating"]
-      }
+        "rating": ["productInfo.ratingInfo.rating"],
+        "coupon": ["productInfo.couponData.text", "couponData.text"],
+        "ratingCount": ["productInfo.ratingInfo.count"]
+      },
+      "fees": { "note": "Myntra adds a small platform fee (about ₹20-25) and may charge delivery on small orders.", "verified": "2026-10-22" }
     },
     {
       "id": "meesho",
@@ -78,6 +104,8 @@
         "body": "{\"query\":\"{q}\",\"type\":\"text_search\",\"page\":1,\"offset\":0,\"limit\":20,\"isDevicePhone\":true}"
       },
       "categories": ["beauty", "fashion", "home", "general"],
+      "productOffers": false,
+      "app": "com.meesho.supply",
       "json": {
         "name": ["name"],
         "price": ["min_product_price", "min_catalog_price"],
@@ -85,7 +113,9 @@
         "url": [],
         "urlTemplate": "/{slug}/p/{product_id}",
         "image": ["image"],
-        "rating": ["catalog_reviews_summary.average_rating"]
+        "rating": ["catalog_reviews_summary.average_rating"],
+        "ratingCount": ["catalog_reviews_summary.rating_count"],
+        "coupon": ["special_offers.display_text"]
       }
     },
     {
@@ -94,14 +124,21 @@
       "base": "https://www.ajio.com",
       "search": "https://www.ajio.com/search/?text={q}",
       "categories": ["beauty", "fashion"],
-      "json": { "brand": ["fnlColorVariantData.brandName", "brandName"], "mrp": ["wasPriceData.value", "mrp"] }
+      "app": "com.ril.ajio",
+      "json": {
+        "brand": ["fnlColorVariantData.brandName", "brandName"],
+        "mrp": ["wasPriceData.value", "mrp"],
+        "price": ["price.value", "price"],
+        "coupon": ["offerPrice.value"]
+      }
     },
     {
       "id": "tatacliq",
       "name": "Tata CLiQ",
       "base": "https://www.tatacliq.com",
       "search": "https://www.tatacliq.com/search/?searchCategory=all&text={q}",
-      "categories": ["beauty", "fashion", "electronics", "home"]
+      "categories": ["beauty", "fashion", "electronics", "home"],
+      "app": "com.tul.tatacliq"
     },
     {
       "id": "reliance",
@@ -109,7 +146,9 @@
       "base": "https://www.reliancedigital.in",
       "search": "https://www.reliancedigital.in/ext/raven-api/catalog/v1.0/products?q={q}&page_size=20",
       "manual": "https://www.reliancedigital.in/products?q={q}",
-      "request": { "headers": { "Accept": "application/json" } },
+      "request": {
+        "headers": { "Accept": "application/json" }
+      },
       "categories": ["electronics", "home"],
       "json": {
         "name": ["name"],
@@ -128,7 +167,9 @@
       "base": "https://www.croma.com",
       "search": "https://api.croma.com/searchservices/v1/search?currentPage=0&query={q}:relevance&fields=FULL&channel=WEB&channelCode=400049",
       "manual": "https://www.croma.com/searchB?q={q}",
-      "request": { "headers": { "Accept": "application/json", "Origin": "https://www.croma.com", "Referer": "https://www.croma.com/" } },
+      "request": {
+        "headers": { "Accept": "application/json", "Origin": "https://www.croma.com", "Referer": "https://www.croma.com/" }
+      },
       "categories": ["electronics", "home"],
       "json": {
         "name": ["name"],
@@ -136,7 +177,8 @@
         "mrp": ["mrp.value"],
         "url": ["url"],
         "image": ["plpImage"],
-        "rating": ["finalReviewRating", "averageRating"]
+        "rating": ["finalReviewRating", "averageRating"],
+        "ratingCount": ["numberOfRatings", "finalReviewRatingCount"]
       }
     },
     {
@@ -153,7 +195,8 @@
       "base": "https://www.jiomart.com",
       "search": "https://www.jiomart.com/search/{q}",
       "categories": ["grocery", "beauty", "electronics", "home", "general"],
-      "fetch": false
+      "fetch": false,
+      "app": "com.jpl.jiomart"
     },
     {
       "id": "purplle",
@@ -161,7 +204,8 @@
       "base": "https://www.purplle.com",
       "search": "https://www.purplle.com/search?q={q}",
       "categories": ["beauty"],
-      "fetch": false
+      "fetch": false,
+      "app": "com.manash.purplle"
     },
     {
       "id": "smytten",
@@ -170,6 +214,42 @@
       "search": "https://smytten.com/shop/search?q={q}",
       "categories": ["beauty"],
       "fetch": false
+    },
+    {
+      "id": "bigbasket",
+      "name": "BigBasket",
+      "base": "https://www.bigbasket.com",
+      "search": "https://www.bigbasket.com/ps/?q={q}",
+      "categories": ["grocery"],
+      "fetch": false,
+      "app": "com.bigbasket.mobileapp"
+    },
+    {
+      "id": "blinkit",
+      "name": "Blinkit",
+      "base": "https://blinkit.com",
+      "search": "https://blinkit.com/s/?q={q}",
+      "categories": ["grocery"],
+      "fetch": false,
+      "app": "com.grofers.customerapp"
+    },
+    {
+      "id": "zepto",
+      "name": "Zepto",
+      "base": "https://www.zeptonow.com",
+      "search": "https://www.zeptonow.com/search?query={q}",
+      "categories": ["grocery"],
+      "fetch": false,
+      "app": "com.zeptoconsumerapp"
+    },
+    {
+      "id": "instamart",
+      "name": "Swiggy Instamart",
+      "base": "https://www.swiggy.com",
+      "search": "https://www.swiggy.com/instamart/search?query={q}",
+      "categories": ["grocery"],
+      "fetch": false,
+      "app": "in.swiggy.android"
     }
   ]
 }

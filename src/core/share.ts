@@ -6,13 +6,17 @@ const STORES =
 /** Strip store suffixes and SEO filler from a page <title> / og:title. */
 export function cleanStoreTitle(t: string): string {
   return t
+    .replace(/\s+/g, ' ')
     .replace(/\s+-\s+Buy\s.*$/i, '') // Flipkart: "X - Buy X Online at Best Price - … | Flipkart.com"
-    .replace(new RegExp(`\\s*[:|-]\\s*(${STORES})\\b.*$`, 'i'), '')
+    .replace(new RegExp(`\\s*[:|@-]\\s*(${STORES})\\b.*$`, 'i'), '') // "| Myntra", "@ Tata CLiQ"
     .replace(/^Buy\s+/i, '')
     .replace(/\s*-\s*Price in India.*$/i, '')
     .replace(/\s+(Online )?at (Best|Lowest) Price.*$/i, '')
     .replace(/\s*:\s*[A-Z][\w &]+$/, '') // Amazon's trailing ": Beauty"
     .replace(/\s+\d{6,}$/, '') // Myntra's trailing style id
+    .replace(/\s+-\s+[^-]*\bfor (?:men|women|unisex|boys|girls|kids|babies)$/i, '') // Myntra: "- Personal Care for Women"
+    .replace(/\s+(?:for\s+)?online$/i, '') // Nykaa: "Buy X Online"
+    .replace(/[\s,.|:-]+$/, '')
     .trim();
 }
 

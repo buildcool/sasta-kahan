@@ -31,7 +31,8 @@ export const COBRANDS: { id: string; name: string; bank: string; re: RegExp }[] 
   { id: 'flipkart-axis', name: 'Flipkart Axis', bank: 'axis', re: /flipkart axis/i },
   { id: 'flipkart-sbi', name: 'Flipkart SBI', bank: 'sbi', re: /flipkart sbi/i },
   { id: 'myntra-kotak', name: 'Myntra Kotak', bank: 'kotak', re: /myntra kotak/i },
-  { id: 'tata-neu-hdfc', name: 'Tata Neu HDFC', bank: 'hdfc', re: /tata neu|neucard/i },
+  { id: 'tata-neu-hdfc', name: 'Tata Neu Infinity HDFC', bank: 'hdfc', re: /tata neu infinity|neu ?card/i },
+  { id: 'tata-neu-plus-hdfc', name: 'Tata Neu Plus HDFC', bank: 'hdfc', re: /tata neu plus/i },
   { id: 'swiggy-hdfc', name: 'Swiggy HDFC', bank: 'hdfc', re: /swiggy hdfc/i },
   { id: 'airtel-axis', name: 'Airtel Axis', bank: 'axis', re: /airtel axis/i },
   { id: 'sbi-cashback', name: 'SBI Cashback', bank: 'sbi', re: /sbi cashback/i },
@@ -39,7 +40,43 @@ export const COBRANDS: { id: string; name: string; bank: string; re: RegExp }[] 
   { id: 'nykaa-rbl', name: 'Nykaa RBL', bank: 'rbl', re: /nykaa rbl/i },
 ];
 
+/** Payment apps that run their own offers — only useful if you have the app (My Cards → UPI apps). */
+export const PAY_APPS: { id: string; name: string; re: RegExp }[] = [
+  { id: 'gpay', name: 'Google Pay', re: /\bgoogle ?pay\b|\bgpay\b/i },
+  { id: 'phonepe', name: 'PhonePe', re: /\bphone ?pe\b/i },
+  { id: 'paytm', name: 'Paytm', re: /\bpaytm\b/i },
+  { id: 'cred', name: 'CRED', re: /\bcred\b/i },
+  { id: 'amazonpay', name: 'Amazon Pay UPI', re: /\bamazon ?pay\b(?!\s*icici)/i },
+  { id: 'supermoney', name: 'super.money', re: /\bsuper\.?money\b/i },
+  { id: 'bhim', name: 'BHIM', re: /\bbhim\b/i },
+  { id: 'mobikwik', name: 'MobiKwik', re: /\bmobikwik\b/i },
+  { id: 'navi', name: 'Navi', re: /\bnavi\b/i },
+  { id: 'jupiter', name: 'Jupiter', re: /\bjupiter\b/i },
+  { id: 'pop', name: 'POP UPI', re: /\bpop\b/i },
+  { id: 'slice', name: 'slice', re: /\bslice\b/i },
+  { id: 'freecharge', name: 'Freecharge', re: /\bfreecharge\b/i },
+  { id: 'airtel', name: 'Airtel Thanks', re: /\bairtel (?:thanks|payments?)\b/i },
+  { id: 'whatsapp', name: 'WhatsApp Pay', re: /\bwhatsapp\b/i },
+  { id: 'kiwi', name: 'Kiwi', re: /\bkiwi\b/i },
+  { id: 'simpl', name: 'Simpl', re: /\bsimpl\b/i },
+  { id: 'lazypay', name: 'LazyPay', re: /\blazypay\b/i },
+];
+
 const num = (s: string) => parseFloat(s.replace(/,/g, ''));
+
+// "Get ₹50 off using Zing UPI": an app we don't know yet is still one specific app, not "any UPI".
+const NOT_AN_APP = new Set(['any', 'all', 'the', 'your', 'via', 'using', 'with', 'on', 'through', 'by', 'and', 'or', 'pay', 'payment', 'payments', 'select', 'selected', 'other', 'rupay', 'bank']);
+function unknownApp(t: string): string | undefined {
+  const m = t.match(/\b(?:using|via|with|through|on)\s+([A-Z][\w.]{1,15})\s+UPI\b/);
+  return m && !NOT_AN_APP.has(m[1].toLowerCase()) ? m[1].toLowerCase() : undefined;
+}
+
+// "first-ever CRED UPI transaction", "first order", "for new users"
+const NEW_USER = /\b(?:first(?:[- ]?ever)?(?:\s+[\w.]+){0,3}?\s+(?:order|transaction|txn|purchase|payment|time)s?|1st\s+(?:order|transaction|txn|purchase)|new (?:users?|customers?))\b/i;
+// Coins / points aren't cash: their value depends on where you redeem them.
+const POINTS = /\b(?:supercoins?|jewels|reward points?|points|coins)\b/i;
+const MIN_ORDER =
+  /(?:\bmov\b(?:\s*of)?|min(?:imum)?\.?\s*(?:purchase|order|txn|transaction|cart|spend|booking)?\s*(?:value|amount)?\s*(?:of)?|on (?:a )?(?:min(?:imum)?\.?\s*)?(?:purchase|order|spend|transaction)s?\s*(?:value\s*)?(?:of|above|over)|\babove|\bover|spend(?:ing)?|cart value of|orders? (?:of|above|over|worth))\s*₹\s*([\d,]+)/i;
 
 /**
  * Parse one human offer sentence, e.g.
@@ -48,37 +85,41 @@ const num = (s: string) => parseFloat(s.replace(/,/g, ''));
  *  "5% Unlimited Cashback on Flipkart Axis Bank Credit Card"
  */
 export function parseOfferText(text: string, site: string, source: Offer['source'] = 'page'): Offer | null {
-  const t = text.replace(/\s+/g, ' ').replace(/\bRs\.?\s*(?=\d)/gi, '₹').trim();
+  const t = text.replace(/\s+/g, ' ').replace(/\bRs\.?\s*(?=\d)/gi, '₹').replace(/\bINR\s*(?=\d)/g, '₹').trim();
   if (t.length < 8 || t.length > 400) return null;
 
   const cobrand = COBRANDS.find((c) => c.re.test(t));
   const bank = cobrand?.bank ?? BANKS.find((b) => b.re.test(t))?.id;
   const upi = /\bupi\b/i.test(t);
-  // Offers tied to one payment app (BHIM, Paytm, CRED...) — not something every user has.
-  const wallet = /\b(bhim|paytm|phonepe|google pay|gpay|cred|mobikwik|amazon pay (?:upi|balance|later)|super\.money|navi)\b/i.test(t);
-  if (!bank && !upi && !wallet) return null;
+  const rupay = /\brupay\b/i.test(t) && /credit/i.test(t);
+  const app = PAY_APPS.find((a) => a.re.test(t))?.id ?? (upi ? unknownApp(t) : undefined);
+  if (!bank && !upi && !app && !rupay) return null;
 
   const credit = /credit/i.test(t);
   const debit = /debit/i.test(t);
   const cardType: CardType = credit && !debit ? 'credit' : debit && !credit ? 'debit' : 'any';
 
-  const pct = t.match(/(\d+(?:\.\d+)?)\s*%/);
-  const flat = t.match(/(?:flat|extra|get|save|instant discount of|discount of)?\s*₹\s*([\d,]+(?:\.\d+)?)\s*(?:off|instant|discount|cashback|savings?)/i)
-    ?? t.match(/^₹\s*([\d,]+)\s/);
-  const cap = t.match(/(?:up\s*to|upto|max(?:imum)?(?: discount)?(?: of)?)\s*₹\s*([\d,]+)/i);
-  const min = t.match(/(?:min(?:imum)?\.?\s*(?:purchase|order|txn|transaction|cart)?\s*(?:value|amount)?\s*(?:of)?|above|on orders? (?:of|above)|spend(?:ing)?)\s*₹\s*([\d,]+)/i);
-  const cashback = /cash\s*back|%\s*back\b/i.test(t);
+  const pct = t.match(/(up\s*to\s*|upto\s*)?(\d+(?:\.\d+)?)\s*%/i);
+  const flat =
+    t.match(/(?:flat|extra|get|save|instant discount of|discount of)?\s*(up\s*to\s*|upto\s*)?₹\s*([\d,]+(?:\.\d+)?)\s*(?:off|instant|discount|cashback|savings?|back)/i) ??
+    t.match(/^()₹\s*([\d,]+)\s/);
+  const cap = t.match(/(?:up\s*to|upto|max(?:imum)?(?: discount| cashback)?(?: of)?)\s*₹\s*([\d,]+)/i);
+  const min = t.match(MIN_ORDER);
+  const cashback = /cash\s*back|%\s*back\b|\bback as\b/i.test(t);
   const emi = /\bemi\b/i.test(t);
   const emiOnly = emi && !/(?:emi|non[- ]emi)\s*(?:&|and|or|\/)\s*(?:non[- ]emi|emi)/i.test(t) && !/full swipe/i.test(t);
 
   let kind: Offer['kind'];
   let value: number;
+  let upTo = false;
   if (pct) {
     kind = 'percent';
-    value = num(pct[1]);
+    value = num(pct[2]);
+    upTo = !!pct[1];
   } else if (flat) {
     kind = 'flat';
-    value = num(flat[1]);
+    value = num(flat[2]);
+    upTo = !!flat[1]; // "up to ₹300 cashback": could be ₹10
   } else if (/no[- ]cost emi/i.test(t)) {
     kind = 'emi';
     value = 0;
@@ -88,26 +129,31 @@ export function parseOfferText(text: string, site: string, source: Offer['source
   if (!value && kind !== 'emi') return null;
   if (kind === 'percent' && value > 80) return null;
 
-  return {
+  const offer: Offer = {
     site,
-    bank: bank ?? (wallet ? 'wallet' : 'upi'),
+    bank: bank ?? (app ? 'wallet' : rupay ? 'rupay' : 'upi'),
     cardType: bank ? cardType : 'any',
-    card: cobrand?.id,
     kind,
-    cashback: cashback || undefined,
     value,
-    cap: pct && cap ? num(cap[1]) : undefined,
-    minOrder: min ? num(min[1]) : undefined,
-    emiOnly: kind === 'emi' || emiOnly || undefined,
     text: t,
     source,
   };
+  if (cobrand) offer.card = cobrand.id;
+  if (!bank && app) offer.app = app;
+  if (cashback) offer.cashback = true;
+  if (POINTS.test(t)) offer.points = true;
+  if (upTo) offer.upTo = true;
+  if (NEW_USER.test(t)) offer.newUser = true;
+  if (pct && cap) offer.cap = num(cap[1]);
+  if (min) offer.minOrder = num(min[1]);
+  if (kind === 'emi' || emiOnly) offer.emiOnly = true;
+  return offer;
 }
 
 const OFFER_HINT = /(bank|credit card|debit card|cashback|instant discount|\bupi\b|\bemi\b)/i;
 
 /** Collect bank / card offers mentioned anywhere on a product page. */
-export function harvestOffers(html: string, site: string): Offer[] {
+export function harvestOffers(html: string, site: string, blobs: unknown[] = extractJsonBlobs(html)): Offer[] {
   const found: Offer[] = [];
   const texts = new Set<string>();
 
@@ -130,7 +176,7 @@ export function harvestOffers(html: string, site: string): Offer[] {
     }
     for (const k in o) visit(o[k], depth + 1);
   };
-  for (const blob of extractJsonBlobs(html)) visit(blob, 0);
+  for (const blob of blobs) visit(blob, 0);
 
   // Visible text too (sites that render offers in HTML).
   const plain = html.replace(/<script[\s\S]*?<\/script>|<style[\s\S]*?<\/style>/gi, ' ').replace(/<[^>]+>/g, '\n').replace(/&amp;/g, '&').replace(/&#8377;|&#x20B9;/g, '₹');
@@ -150,7 +196,7 @@ export function dedupeOffers(offers: Offer[]): Offer[] {
   const seen = new Map<string, Offer>();
   for (const o of offers) {
     // Same offer is often listed twice (pill + bottom sheet), once without the word "cashback".
-    const key = [o.site, o.bank, o.card, o.cardType, o.value, o.cap, o.minOrder, o.emiOnly].join('|');
+    const key = [o.site, o.bank, o.card, o.app, o.cardType, o.value, o.cap, o.minOrder, o.emiOnly, o.newUser].join('|');
     const prev = seen.get(key);
     if (!prev || (!prev.cashback && o.cashback)) seen.set(key, o);
   }

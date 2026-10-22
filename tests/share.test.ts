@@ -37,7 +37,7 @@ describe('cleanStoreTitle', () => {
   it('Amazon and Myntra page titles', () => {
     expect(cleanStoreTitle('Lakme Sun Expert SPF 50 Sunscreen, 100ml : Amazon.in: Beauty')).toBe('Lakme Sun Expert SPF 50 Sunscreen, 100ml');
     expect(cleanStoreTitle('Buy ASICS Men GEL-KAYANO 32 Running Shoes - Sports Shoes for Men 31234567 | Myntra')).toBe(
-      'ASICS Men GEL-KAYANO 32 Running Shoes - Sports Shoes for Men',
+      'ASICS Men GEL-KAYANO 32 Running Shoes',
     );
   });
 });
@@ -50,4 +50,16 @@ describe('isProductTitle', () => {
     expect(isProductTitle(undefined)).toBe(false);
     expect(isProductTitle('Asics GEL-KAYANO 32 Running Shoes For Unisex')).toBe(true);
   });
+});
+
+describe('cleanStoreTitle (more stores)', () => {
+  it.each([
+    ['Buy Tossido Grey Fine Woven Micro Fiber Necktie Online', 'Tossido Grey Fine Woven Micro Fiber Necktie'],
+    ['Buy Minimalist Niacinamide 10% + Zinc Serum - 30 ml Online At Best Price @ Tata CLiQ', 'Minimalist Niacinamide 10% + Zinc Serum - 30 ml'],
+    ['Buy Titan Neo Analog Watch for Men Online @ Tata CLiQ', 'Titan Neo Analog Watch for Men'],
+    ['Buy Minimalist  Set of Vitamin B5 Moisturizer + SPF50 Sunscreen -  - Personal Care for Unisex', 'Minimalist Set of Vitamin B5 Moisturizer + SPF50 Sunscreen'],
+    ['Buy Minimalist Niacinamide Serum - 30 ml - Personal Care for Women', 'Minimalist Niacinamide Serum - 30 ml'],
+    ['Buy Minimalist Set of Moisturizer - Skin Care Combo for Unisex 41358430 | Myntra', 'Minimalist Set of Moisturizer'],
+  ])('%s', (raw, clean) => expect(cleanStoreTitle(raw)).toBe(clean));
+  it('"Access Denied" is not a product', () => expect(isProductTitle('Access Denied')).toBe(false));
 });

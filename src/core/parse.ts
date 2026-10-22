@@ -35,9 +35,11 @@ export function manualUrl(site: SiteConfig, query: string): string {
 export interface ParseResult {
   status: SiteStatus;
   listings: Listing[];
+  /** Why a page counts as failed: 'empty-page' = no products and no "no results" message. */
+  reason?: string;
 }
 
-type HtmlParser = (html: string) => Document;
+export type HtmlParser = (html: string) => Document;
 
 const defaultHtmlParser: HtmlParser = (html) => new DOMParser().parseFromString(html, 'text/html');
 
@@ -58,5 +60,9 @@ export function parseResponse(site: SiteConfig, body: string, parseHtml: HtmlPar
     if (!listings.length) listings = extractJsonBlobs(body).flatMap((b) => findProducts(b, site));
   }
   listings = dedupe(listings);
-  return { status: listings.length ? 'ok' : 'empty', listings };
+  if (listings.length) return { status: 'ok', listings };
+  // Some sites (Amazon) answer busy moments with a normal-looking page that has no products.
+  // Only call it "no results" when the page says so.
+  if (site.emptyMarkers?.length && !site.emptyMarkers.some((m) => body.includes(m))) return { status: 'blocked', listings, reason: 'empty-page' };
+  return { status: 'empty', listings };
 }

@@ -10,6 +10,7 @@ public class MainActivity extends BridgeActivity {
     @Override
     public void onCreate(Bundle savedInstanceState) {
         registerPlugin(ShareInPlugin.class);
+        registerPlugin(ToolsPlugin.class);
         // Cold start from the Share sheet: keep the text until the web app asks for it.
         ShareInPlugin.setPending(ShareInPlugin.textFrom(getIntent()));
         super.onCreate(savedInstanceState);
