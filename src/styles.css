@@ -324,3 +324,42 @@ main { max-width: 640px; margin: 0 auto; padding: 0 16px; }
 .tabs button span { font-size: 20px; line-height: 1; filter: grayscale(1); opacity: 0.7; }
 .tabs button.on { color: var(--brand); font-weight: 700; }
 .tabs button.on span { filter: none; opacity: 1; }
+
+/* Delivery location (quick-commerce sites) */
+.loc-chip {
+  display: block; width: 100%; margin: 8px 0 0; padding: 8px 12px;
+  border: 1px dashed var(--brand); border-radius: 12px; background: var(--surface);
+  color: var(--brand); font: inherit; font-size: 13px; font-weight: 600; text-align: left;
+}
+.loc-chip.set { border: 1px solid var(--line); color: var(--muted); font-weight: 500; }
+.sheet-backdrop {
+  position: fixed; inset: 0; z-index: 50; background: rgba(0, 0, 0, 0.45);
+  display: flex; align-items: flex-end; justify-content: center;
+}
+.sheet {
+  width: 100%; max-width: 560px; max-height: 88vh; overflow-y: auto;
+  background: var(--surface); color: var(--text); border-radius: 18px 18px 0 0;
+  padding: 16px 16px calc(16px + env(safe-area-inset-bottom));
+  display: flex; flex-direction: column; gap: 10px;
+}
+.sheet h3 { margin: 0; }
+.sheet p { margin: 0; }
+.pill.wide { width: 100%; padding: 10px 12px; font-size: 14px; }
+.pill.ghost { color: var(--muted); }
+.loc-form { display: flex; gap: 8px; }
+.loc-form input {
+  flex: 1; min-width: 0; font: inherit; padding: 9px 12px; border-radius: 10px;
+  border: 1px solid var(--line); background: var(--bg); color: var(--text);
+}
+.places { display: flex; flex-direction: column; gap: 6px; }
+.place {
+  text-align: left; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px;
+  background: var(--bg); color: var(--text); font: inherit;
+}
+.loc-current { padding: 10px 12px; border-radius: 12px; background: var(--brand-soft); display: flex; flex-direction: column; gap: 6px; }
+.badge-quick { background: color-mix(in srgb, var(--good) 14%, transparent); color: var(--good); }
+.need-loc {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding: 10px 12px; margin-bottom: 6px; border-radius: 12px; background: var(--brand-soft); font-size: 13px;
+}
+.need-loc span { flex: 1; min-width: 180px; }

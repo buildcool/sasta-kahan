@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import type { UserLocation } from '../core/location.ts';
 import { LANGS, useT } from '../i18n.ts';
 import { clearCookies, openLogin, openUrl, shareText } from '../native.ts';
 import { exportBackup, importBackup, type Settings } from '../storage.ts';
@@ -21,9 +22,11 @@ interface Props {
   onSettings: (s: Settings) => void;
   version: { version: string; build: number };
   onRestored: () => void;
+  location?: UserLocation;
+  onEditLocation: () => void;
 }
 
-export function More({ settings, onSettings, version, onRestored }: Props) {
+export function More({ settings, onSettings, version, onRestored, location, onEditLocation }: Props) {
   const t = useT();
   const [importText, setImportText] = useState('');
   const [importMsg, setImportMsg] = useState<string>();
@@ -31,7 +34,7 @@ export function More({ settings, onSettings, version, onRestored }: Props) {
   const [updateMsg, setUpdateMsg] = useState<string>();
   const logins = settings.logins ?? [];
 
-  const toggle = (k: 'background' | 'clipboard' | 'suggestions') => onSettings({ ...settings, [k]: !settings[k] });
+  const toggle = (k: 'background' | 'clipboard' | 'suggestions' | 'quickBrowser') => onSettings({ ...settings, [k]: !settings[k] });
 
   return (
     <div className="page">
@@ -65,6 +68,21 @@ export function More({ settings, onSettings, version, onRestored }: Props) {
         <span>
           {t('more.suggest')}
           <span className="muted small block">{t('more.suggestHint')}</span>
+        </span>
+      </label>
+
+      <h3>{t('more.location')}</h3>
+      <div className="row between">
+        <span className={location ? '' : 'muted small'}>{location ? location.label : t('more.locationNone')}</span>
+        <button className="pill" onClick={onEditLocation}>
+          {t('more.locationChange')}
+        </button>
+      </div>
+      <label className="toggle">
+        <input type="checkbox" checked={settings.quickBrowser} onChange={() => toggle('quickBrowser')} />
+        <span>
+          {t('more.quickBrowser')}
+          <span className="muted small block">{t('more.quickBrowserHint')}</span>
         </span>
       </label>
 

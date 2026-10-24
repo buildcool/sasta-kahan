@@ -22,6 +22,8 @@ export interface Listing {
   /** undefined = the site didn't say. */
   inStock?: boolean;
   coupon?: Coupon;
+  /** Delivery time the site promises, e.g. "10 min" (quick-commerce sites). */
+  eta?: string;
 }
 
 /** Delivery / platform fees a site adds at checkout (config/sites.json, approximate). */
@@ -37,6 +39,45 @@ export interface SiteFees {
   verified?: string;
 }
 
+export type HttpMethod = 'GET' | 'POST' | 'PUT';
+
+/**
+ * A request template. `{q}` is the query; `{lat}` `{lng}` `{pincode}` `{area}` `{city}` `{state}`
+ * come from the user's delivery location; `{uuid}` is a fresh random id; setup steps can add more.
+ */
+export interface RequestTemplate {
+  method?: HttpMethod;
+  headers?: Record<string, string>;
+  body?: string;
+}
+
+/**
+ * One request a site needs before searching, e.g. telling it the delivery location or
+ * looking up the store for a pincode. Runs once per location (cached for a few hours).
+ */
+export interface SetupStep extends RequestTemplate {
+  url: string;
+  /** Values to keep for later requests: a JSON path into the response, or "cookie:NAME". */
+  save?: Record<string, string>;
+  /** "path" (truthy) or "path=value" that must hold, or the site doesn't deliver to this location. */
+  require?: string;
+}
+
+/** Reading a site in a hidden in-app browser (Android only), for sites that only answer real browsers. */
+export interface BrowserConfig {
+  /** Page to open (template). Defaults to `manual`. */
+  page?: string;
+  /** Cookies to set first, e.g. the delivery location. `encode` URL-encodes the filled value. */
+  cookies?: { url: string; name: string; value: string; domain?: string; encode?: boolean }[];
+  /** Keep the page's own responses whose URL matches this regular expression. */
+  capture?: string;
+  /** Instead of capturing, run the site's search `request` inside the opened page. */
+  run?: boolean;
+  /** Use the browser only when the normal request is blocked. */
+  fallback?: boolean;
+  timeoutMs?: number;
+}
+
 /** Remote-updatable description of how to read a site (config/sites.json). */
 export interface SiteConfig {
   id: string;
@@ -47,11 +88,20 @@ export interface SiteConfig {
   /** What we open for "Check manually"; defaults to `search`. */
   manual?: string;
   /** For JSON APIs: method, headers and a body template (`{q}` = query). */
-  request?: {
-    method?: 'GET' | 'POST';
-    headers?: Record<string, string>;
-    body?: string;
-  };
+  request?: RequestTemplate;
+  /** Quick-commerce store (delivery in minutes from a nearby dark store). */
+  quick?: boolean;
+  /** Typical delivery time to show when the search results don't say, e.g. "10 min". */
+  eta?: string;
+  /** The site's prices depend on where you are: it needs the user's coordinates, pincode or both. */
+  location?: 'latlng' | 'pincode' | 'both';
+  /** Requests to make before searching (location, store lookup). */
+  setup?: SetupStep[];
+  /** Hours a setup stays valid (default 6). */
+  setupHours?: number;
+  /** Requests rely on cookies from earlier requests (the app's cookie store), so it can't be checked without one. */
+  session?: boolean;
+  browser?: BrowserConfig;
   /** Which categories this site is worth querying for. */
   categories: Category[];
   /** false → never fetched, only shown as a "Check manually" link. */
@@ -75,8 +125,16 @@ export interface SiteConfig {
     coupon?: string[];
     /** Fields appended to the title, e.g. a separate "30 g" subtitle. */
     extra?: string[];
-    /** Build the product URL from fields, e.g. "/p/{productMeta.productId}". */
+    /** Build the product URL from fields, e.g. "/p/{productMeta.productId}"; "{^x}" reads x from the parent object. */
     urlTemplate?: string;
+    /** Multiply prices by this, e.g. 0.01 for prices in paise. */
+    priceScale?: number;
+    /** Stock rules: "path" (a count or flag; 0/false = out of stock) or "path=value" (in stock only when equal). */
+    stock?: string[];
+    /** Delivery time text, e.g. "10 mins". */
+    eta?: string[];
+    /** Delivery time in seconds. */
+    etaSeconds?: string[];
   };
   /** CSS selectors for HTML-only result pages. */
   selectors?: {

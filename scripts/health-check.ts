@@ -2,6 +2,8 @@
 // every site and reports which sites' pages loaded but gave no products — that usually means
 // the site changed its page and config/sites.json needs a fix.
 // GitHub's servers are abroad, so captchas / 403s here are expected and only reported, not flagged.
+// Quick-commerce sites (they need a delivery location in India) are checked on a phone instead:
+// npm run live -- "amul milk" --pin=560034 --lat=12.9352 --lng=77.6245
 // Usage: node scripts/health-check.ts [--out report.md]
 import { readFileSync, writeFileSync } from 'node:fs';
 import { parseHTML } from 'linkedom';
@@ -20,7 +22,7 @@ type Row = { site: string; query: string; http: number; status: string; listings
 const rows: Row[] = [];
 for (const query of QUERIES) {
   const ref = makeReference(query, 'query');
-  const sites = config.sites.filter((s) => s.fetch !== false && s.categories.some((c) => ref.cats.includes(c)));
+  const sites = config.sites.filter((s) => s.fetch !== false && !s.location && s.categories.some((c) => ref.cats.includes(c)));
   await Promise.all(
     sites.map(async (site) => {
       const req = buildRequest(site, query);

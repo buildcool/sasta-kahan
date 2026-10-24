@@ -10,6 +10,7 @@ import { applyCheck, type WatchItem } from '../src/core/watchLogic.ts';
 import { LangContext, type Lang } from '../src/i18n.ts';
 import { DEFAULT_SETTINGS } from '../src/storage.ts';
 import { Cards } from '../src/ui/Cards.tsx';
+import { LocationSheet } from '../src/ui/LocationSheet.tsx';
 import { More } from '../src/ui/More.tsx';
 import { Results } from '../src/ui/Results.tsx';
 import { Watch } from '../src/ui/Watch.tsx';
@@ -28,15 +29,23 @@ const results: SiteResult[] = sortResults(
 );
 results.push({ site: site('croma'), status: 'nomatch', listings: results[0].listings.slice(0, 3), manualUrl: 'https://www.croma.com' });
 results.push({ site: site('reliance'), status: 'blocked', listings: [], error: 'empty-page', manualUrl: 'https://www.reliancedigital.in' });
+// Quick commerce: a live Blinkit result, Zepto waiting for a location, DMart not delivering here.
+const milk = makeReference('amul taaza toned milk 500 ml', 'query');
+const blinkit = readSearch(site('blinkit'), { status: 200, body: fixture('search-blinkit') }, milk);
+results.unshift({ site: site('blinkit'), status: blinkit.status, listings: blinkit.listings, best: blinkit.best, manualUrl: 'https://blinkit.com' });
+results.push({ site: site('zepto'), status: 'manual', listings: [], error: 'needs-location', manualUrl: 'https://www.zepto.com' });
+results.push({ site: site('dmart'), status: 'empty', listings: [], error: 'no-delivery', manualUrl: 'https://www.dmart.in' });
 
 const render = (lang: Lang, el: ReturnType<typeof h>) => renderToStaticMarkup(h(LangContext.Provider, { value: lang }, el));
 const noop = () => {};
 
 describe.each(['en', 'hinglish', 'hi'] as Lang[])('screens render (%s)', (lang) => {
   it('results', () => {
-    const html = render(lang, h(Results, { results, query: 'lakme sunscreen spf 50', wallet, version: '1.1.0', membershipName: (x: string) => x, onCompareExact: noop }));
+    const html = render(lang, h(Results, { results, query: 'lakme sunscreen spf 50', wallet, version: '1.1.0', membershipName: (x: string) => x, onCompareExact: noop, onSetLocation: noop }));
     expect(html).toContain('winner');
     expect(html).toContain('₹');
+    expect(html).toContain('badge-quick');
+    expect(html).toContain('need-loc');
     expect(html).not.toMatch(/\b(res|card|status|match|badge)\.[a-z]+/); // no untranslated keys
   });
   it('cards', () => {
@@ -52,8 +61,16 @@ describe.each(['en', 'hinglish', 'hi'] as Lang[])('screens render (%s)', (lang) 
     expect(html).not.toMatch(/\bwatch\.[a-z]+/);
   });
   it('more', () => {
-    const html = render(lang, h(More, { settings: { ...DEFAULT_SETTINGS, lang, logins: ['amazon'] }, onSettings: noop, version: { version: '1.1.0', build: 5 }, onRestored: noop }));
+    const location = { lat: 12.9352, lng: 77.6245, pincode: '560034', label: 'Koramangala, Bengaluru 560034', source: 'pincode' as const };
+    const html = render(lang, h(More, { settings: { ...DEFAULT_SETTINGS, lang, logins: ['amazon'] }, onSettings: noop, version: { version: '1.1.0', build: 5 }, onRestored: noop, location, onEditLocation: noop }));
     expect(html).toContain('Amazon');
+    expect(html).toContain('Koramangala');
     expect(html).not.toMatch(/\b(more|privacy)\.[a-z]+/);
+  });
+  it('location picker', () => {
+    const html = render(lang, h(LocationSheet, { value: { lat: 12.93, lng: 77.62, label: 'Koramangala, Bengaluru', source: 'search' }, onSave: noop, onClose: noop }));
+    expect(html).toContain('Koramangala');
+    expect(html).toContain('placeholder="560034"'); // asks for the missing pincode
+    expect(html).not.toMatch(/\bloc\.[a-z]+/);
   });
 });

@@ -7,5 +7,6 @@ HANDLERS.checkWatchlist(() => {
   print('item0 history', JSON.stringify(watch[0].history));
   print('item0 lastChecked set', watch[0].lastChecked > t0 - 1000, 'inStock', watch[0].inStock, 'url', watch[0].url);
   print('item1 untouched', watch[1].lastChecked < t0 - 30000);
+  print('item2 (quick commerce) history', JSON.stringify(watch[2].history));
   print('notifications', JSON.stringify(NOTES));
 }, (e) => print('REJECT', e), {});

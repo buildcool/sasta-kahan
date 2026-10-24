@@ -1,9 +1,27 @@
 import { getConfig } from './config.ts';
 import { fetchText } from './fetcher.ts';
+import { locationKey, locationVars, type UserLocation } from './location.ts';
 import { condenseTitle, makeReference, type Reference } from './matcher.ts';
 import { dedupeOffers } from './offers.ts';
-import { buildRequest, manualUrl } from './parse.ts';
-import { flagOutliers, priceFor, readProductPage, readSearch, refineWithPage, sortResults, type FetchResult, type SiteCheck } from './search.ts';
+import { buildRequest, manualUrl, type Vars } from './parse.ts';
+import {
+  canCheck,
+  fetchWithDc,
+  flagOutliers,
+  pageRequest,
+  priceFor,
+  readPageResult,
+  readProductPage,
+  readSearch,
+  refineWithPage,
+  runSetup,
+  sortResults,
+  type FetchResult,
+  type Net,
+  type PageResult,
+  type SetupResult,
+  type SiteCheck,
+} from './search.ts';
 import { cleanSharedText, cleanStoreTitle, isProductTitle } from './share.ts';
 import type { Category, Offer, SiteConfig, SiteResult, Wallet } from './types.ts';
 
@@ -19,6 +37,12 @@ export interface SearchInput {
   signal?: AbortSignal;
   /** Ignore the 10-minute cache and any cool-down (the Refresh button). */
   fresh?: boolean;
+  /** Delivery location, for quick-commerce sites. */
+  location?: UserLocation;
+  /** Native helpers (cookie store, hidden browser); absent in the web build. */
+  net?: Omit<Net, 'fetch'>;
+  /** The user turned the hidden browser off (More → Check Zepto & Instamart). */
+  browserOff?: boolean;
 }
 
 const CACHE_MS = 10 * 60 * 1000;
@@ -26,7 +50,17 @@ const CACHE_MS = 10 * 60 * 1000;
 const MAX_PRODUCT_PAGES = 6;
 const searchCache = new Map<string, { at: number; res: FetchResult }>();
 const pageCache = new Map<string, { at: number } & ReturnType<typeof readProductPage>>();
+const browserCache = new Map<string, { at: number; res: PageResult }>();
+const setupCache = new Map<string, { at: number; result: SetupResult }>();
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+let browserChain: Promise<unknown> = Promise.resolve();
+/** Hidden-browser pages are heavy: open one at a time. */
+function oneAtATime<T>(fn: () => Promise<T>): Promise<T> {
+  const run = browserChain.then(fn, fn);
+  browserChain = run.catch(() => undefined);
+  return run;
+}
 
 // A site that blocked us gets a rest (5 min, then 20, then 60) instead of more requests,
 // which would only get the phone's IP blocked for longer.
@@ -80,22 +114,64 @@ export function sitesFor(cats: Category[]): { fetch: SiteConfig[]; manualOnly: S
   };
 }
 
-async function searchSite(site: SiteConfig, query: string, ref: Reference, fresh?: boolean): Promise<{ check: SiteCheck; at: number }> {
-  const req = buildRequest(site, query);
-  const key = `${req.method} ${req.url} ${req.body ?? ''}`;
+/** A site's setup (delivery location, store lookup) for this location, run once per few hours. */
+async function setupFor(site: SiteConfig, loc: UserLocation | undefined, net: Net, fresh?: boolean): Promise<SetupResult> {
+  const base = locationVars(loc);
+  if (!site.setup?.length && !site.search.includes('{dc}')) return { ok: true, vars: base };
+  const key = `${site.id}|${locationKey(loc)}`;
+  const hit = setupCache.get(key);
+  if (!fresh && hit && Date.now() - hit.at < (site.setupHours ?? 6) * 3_600_000) return hit.result;
+  const result = await runSetup(site, base, net);
+  // Keep a working setup and a "doesn't deliver here"; anything else is retried next search.
+  if (result.ok || result.check.reason === 'no-delivery') setupCache.set(key, { at: Date.now(), result });
+  return result;
+}
+
+interface SiteOpts {
+  fresh?: boolean;
+  loc?: UserLocation;
+  net: Net;
+  signal?: AbortSignal;
+}
+
+async function searchSite(site: SiteConfig, query: string, ref: Reference, opts: SiteOpts): Promise<{ check: SiteCheck; at: number }> {
+  const { fresh, loc, net } = opts;
+  const setup = await setupFor(site, loc, net, fresh);
+  if (!setup.ok) return { check: setup.check, at: Date.now() };
+  const vars = setup.vars;
+  if (site.browser && !site.browser.fallback) return viaBrowser(site, query, ref, vars, opts);
+
+  const build = (v: Vars) => buildRequest(site, query, v);
+  const req = build(vars);
+  // Quick-commerce sites send the location in headers/cookies, so it's part of the key.
+  const key = `${req.method} ${req.url} ${req.body ?? ''} ${locationKey(loc)}`;
   const hit = searchCache.get(key);
   if (!fresh && hit && Date.now() - hit.at < CACHE_MS) return { check: readSearch(site, hit.res, ref), at: hit.at };
-  let res = await fetchText(req);
+  let res = await fetchWithDc(net, req, vars, build);
   let check = readSearch(site, res, ref);
   if (check.reason === 'empty-page') {
     // A busy-moment empty page: one calm retry usually gets the real results.
     await sleep(1500);
-    res = await fetchText(req);
+    res = await fetchWithDc(net, build(vars), vars, build);
     check = readSearch(site, res, ref);
   }
+  if (check.status === 'blocked' && site.browser?.fallback && net.readPage) return viaBrowser(site, query, ref, vars, opts);
   const at = Date.now();
   // Only cache real answers — never a captcha or an empty busy page.
   if (check.status !== 'blocked' && check.status !== 'error') searchCache.set(key, { at, res });
+  return { check, at };
+}
+
+/** Read the site in the hidden in-app browser, like opening its search page yourself. */
+async function viaBrowser(site: SiteConfig, query: string, ref: Reference, vars: Vars, opts: SiteOpts): Promise<{ check: SiteCheck; at: number }> {
+  const req = pageRequest(site, query, vars);
+  const key = `page ${req.url} ${req.run?.url ?? ''} ${locationKey(opts.loc)}`;
+  const hit = browserCache.get(key);
+  if (!opts.fresh && hit && Date.now() - hit.at < CACHE_MS) return { check: readPageResult(site, hit.res, ref), at: hit.at };
+  const res = await oneAtATime(() => (opts.signal?.aborted ? Promise.resolve<PageResult>({ captures: [], reason: 'aborted' }) : opts.net.readPage!(req)));
+  const check = readPageResult(site, res, ref);
+  const at = Date.now();
+  if (check.status !== 'blocked' && check.status !== 'error') browserCache.set(key, { at, res });
   return { check, at };
 }
 
@@ -116,13 +192,20 @@ async function productPage(site: SiteConfig, url: string, fresh?: boolean) {
 
 /** Run one comparison. Results stream in through onUpdate as each site answers. */
 export async function runSearch(input: SearchInput): Promise<SiteResult[]> {
-  const { query, wallet, onUpdate, signal, fresh } = input;
+  const { query, wallet, onUpdate, signal, fresh, location: loc } = input;
   const ref = input.ref ?? makeReference(query, 'query');
   const { fetch: toFetch, manualOnly } = sitesFor(ref.cats);
   const config = getConfig();
+  const net: Net = { fetch: fetchText, ...input.net };
 
   const results: SiteResult[] = [
     ...toFetch.map((site): SiteResult => {
+      // Quick-commerce sites need a delivery location; some only open in the app's hidden browser.
+      const can = canCheck(site, net, loc);
+      if (can !== 'yes') {
+        const error = can === 'app-only' && input.browserOff && site.browser ? 'browser-off' : can;
+        return { site, status: 'manual', listings: [], error, manualUrl: manualUrl(site, query) };
+      }
       const paused = !fresh && pausedUntil(site.id);
       return paused
         ? { site, status: 'blocked', listings: [], error: `paused:${paused}`, manualUrl: manualUrl(site, query) }
@@ -144,7 +227,7 @@ export async function runSearch(input: SearchInput): Promise<SiteResult[]> {
   await Promise.all(
     live.map(async (site) => {
       try {
-        const { check, at } = await searchSite(site, query, ref, fresh);
+        const { check, at } = await searchSite(site, query, ref, { fresh, loc, net, signal });
         if (signal?.aborted) return;
         if (check.status === 'blocked') noteBlocked(site.id);
         else noteOk(site.id);
@@ -153,7 +236,8 @@ export async function runSearch(input: SearchInput): Promise<SiteResult[]> {
         update(site, { status: check.status, listings: check.listings, best, error: check.error ?? check.reason, checkedAt: at });
 
         // Second step (background): product page → bank offers, and the pack size when the title didn't show it.
-        if (!check.best || site.productOffers === false || check.best.match === 'size' || pages >= MAX_PRODUCT_PAGES) return;
+        // Quick-commerce results already show the pack size, and their pages are app-only.
+        if (!check.best || site.productOffers === false || site.quick || check.best.match === 'size' || pages >= MAX_PRODUCT_PAGES) return;
         pages++;
         const page = await productPage(site, check.best.url, fresh);
         if (signal?.aborted || !page) return;

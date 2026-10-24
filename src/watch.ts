@@ -1,4 +1,4 @@
-import { runSearch } from './core/engine.ts';
+import { runSearch, type SearchInput } from './core/engine.ts';
 import { makeReference } from './core/matcher.ts';
 import type { SiteResult, Wallet } from './core/types.ts';
 import { alertText } from './core/alerts.ts';
@@ -25,13 +25,17 @@ export async function removeFromWatch(id: string): Promise<WatchItem[]> {
   return items;
 }
 
+/** Delivery location and native helpers, so quick-commerce prices count too. */
+export type CheckContext = Pick<SearchInput, 'location' | 'net'>;
+
 /** Re-check one item; returns the updated list. Notifies on a drop, target or restock. */
-export async function checkItem(item: WatchItem, wallet: Wallet, lang: Lang): Promise<WatchItem[]> {
+export async function checkItem(item: WatchItem, wallet: Wallet, lang: Lang, ctx: CheckContext = {}): Promise<WatchItem[]> {
   const results = await runSearch({
     query: item.query,
     ref: item.refTitle ? makeReference(item.refTitle, 'product') : undefined,
     wallet,
     onUpdate: () => {},
+    ...ctx,
   });
   const { item: next, alert } = applyCheck(item, lowestExact(results));
   const items = mergeItems(await loadWatch(), [next]);
@@ -46,12 +50,12 @@ export async function checkItem(item: WatchItem, wallet: Wallet, lang: Lang): Pr
 let running: Promise<WatchItem[]> | undefined;
 
 /** Called when the app opens / resumes: refresh stale items one by one, one run at a time. */
-export function checkStale(wallet: Wallet, lang: Lang): Promise<WatchItem[]> {
+export function checkStale(wallet: Wallet, lang: Lang, ctx: CheckContext = {}): Promise<WatchItem[]> {
   running ??= (async () => {
     try {
       let items = await loadWatch();
       for (const it of items.filter((x) => isStale(x, RECHECK_MS)).slice(0, 5)) {
-        items = await checkItem(it, wallet, lang);
+        items = await checkItem(it, wallet, lang, ctx);
       }
       return items;
     } finally {

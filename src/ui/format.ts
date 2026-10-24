@@ -54,6 +54,10 @@ export function statusText(r: SiteResult, t: T): string {
     return t('status.paused', { n: Math.max(1, Math.ceil((Number(r.error.slice(7)) - Date.now()) / 60000)) });
   }
   if (r.status === 'blocked' && r.error === 'empty-page') return t('status.emptyPage');
+  if (r.status === 'manual' && r.error === 'needs-location') return t('status.needsLocation');
+  if (r.status === 'manual' && r.error === 'app-only') return t('status.appOnly');
+  if (r.status === 'manual' && r.error === 'browser-off') return t('status.browserOff');
+  if (r.status === 'empty' && r.error === 'no-delivery') return t('status.noDelivery');
   if (r.status === 'nomatch') return t('status.nomatch', { n: r.listings.length });
   if (r.status === 'ok') return '';
   return t(`status.${r.status}`);

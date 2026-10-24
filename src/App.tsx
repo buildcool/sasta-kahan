@@ -4,20 +4,35 @@ import { nameForBarcode, nameFromAmazon } from './core/barcode.ts';
 import { getConfig, refreshConfig } from './core/config.ts';
 import { EMPTY_WALLET, expandWallet } from './core/effectivePrice.ts';
 import { extractUrl, repriceForWallet, resolveInput, runSearch } from './core/engine.ts';
+import type { UserLocation } from './core/location.ts';
 import { condenseTitle, makeReference, tokens, type Reference } from './core/matcher.ts';
 import { parseResponse } from './core/parse.ts';
 import type { ScoredListing, SiteResult, Wallet } from './core/types.ts';
 import type { WatchItem } from './core/watchLogic.ts';
 import { LangContext, defaultLang, translate, type Key, type Lang, type Vars } from './i18n.ts';
-import { appVersion, canScan, ensureNotificationPermission, onSharedText, openUrl, readClipboard, scanBarcode, shareText } from './native.ts';
+import {
+  appVersion,
+  canReadPage,
+  canScan,
+  cookiesFor,
+  ensureNotificationPermission,
+  onSharedText,
+  openUrl,
+  readClipboard,
+  readPage,
+  scanBarcode,
+  shareText,
+} from './native.ts';
 import {
   DEFAULT_SETTINGS,
   addRecent,
   clearRecent,
+  loadLocation,
   loadRecent,
   loadSettings,
   loadWallet,
   loadWatch,
+  saveLocation,
   saveSettings,
   saveWallet,
   updateWatchItem,
@@ -26,12 +41,13 @@ import {
 } from './storage.ts';
 import { Cards } from './ui/Cards.tsx';
 import { ago, summaryText } from './ui/format.ts';
+import { LocationSheet } from './ui/LocationSheet.tsx';
 import { More } from './ui/More.tsx';
 import { Results } from './ui/Results.tsx';
 import { SearchBar } from './ui/SearchBar.tsx';
 import { Watch } from './ui/Watch.tsx';
 import { checkForUpdate, type Update } from './update.ts';
-import { addToWatch, checkItem, checkStale, removeFromWatch } from './watch.ts';
+import { addToWatch, checkItem, checkStale, removeFromWatch, type CheckContext } from './watch.ts';
 
 type Tab = 'search' | 'cards' | 'watch' | 'more';
 
@@ -59,6 +75,9 @@ function Rich({ text }: { text: string }) {
 /** Short names search better as words; full product titles as "this exact product". */
 const refFor = (name: string) => makeReference(name, tokens(name).length <= 6 ? 'query' : 'product');
 
+/** Watchlist re-checks include quick-commerce prices, but never open the hidden browser by themselves. */
+const watchContext = (location?: UserLocation): CheckContext => ({ location, net: { cookies: cookiesFor } });
+
 export default function App() {
   const [tab, setTab] = useState<Tab>('search');
   const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
@@ -75,10 +94,12 @@ export default function App() {
   const [clip, setClip] = useState<string>();
   const [update, setUpdate] = useState<Update>();
   const [version, setVersion] = useState({ version: 'dev', build: 0 });
+  const [location, setLocation] = useState<UserLocation>();
+  const [locOpen, setLocOpen] = useState(false);
   const abort = useRef<AbortController>(undefined);
   // Listeners registered once read the latest state through refs.
-  const live = useRef({ wallet, lang, settings, tab, current });
-  live.current = { wallet, lang, settings, tab, current };
+  const live = useRef({ wallet, lang, settings, tab, current, location });
+  live.current = { wallet, lang, settings, tab, current, location };
   const config = getConfig();
 
   const search = useCallback(async (text: string, ref?: Reference, label?: string, fresh = false) => {
@@ -101,6 +122,7 @@ export default function App() {
       setCurrent({ query: resolved.query, ref: resolved.ref, label: shown });
       setInput(resolved.ref.mode === 'product' ? '' : resolved.query);
       setRecent(await addRecent({ query: resolved.query, label: shown, refTitle: resolved.ref.mode === 'product' ? resolved.ref.text : undefined }));
+      const { settings: st, location: loc } = live.current;
       await runSearch({
         query: resolved.query,
         ref: resolved.ref,
@@ -108,6 +130,9 @@ export default function App() {
         onUpdate: (r) => !ctrl.signal.aborted && setResults(r),
         signal: ctrl.signal,
         fresh,
+        location: loc,
+        net: { cookies: cookiesFor, readPage: st.quickBrowser && canReadPage() ? readPage : undefined },
+        browserOff: canReadPage() && !st.quickBrowser,
       });
     } catch (e) {
       if (ctrl.signal.aborted) return;
@@ -122,7 +147,7 @@ export default function App() {
   const runRecent = (r: Recent) => search(r.query, r.refTitle ? makeReference(r.refTitle, 'product') : undefined, r.label);
 
   useEffect(() => {
-    const recheck = (w: Wallet, l: Lang) => checkStale(expandWallet(w), l).then(setWatch).catch(() => undefined);
+    const recheck = (w: Wallet, l: Lang, loc?: UserLocation) => checkStale(expandWallet(w), l, watchContext(loc)).then(setWatch).catch(() => undefined);
     const lookAtClipboard = async (s: Settings) => {
       if (!s.clipboard) return;
       const link = (await readClipboard())?.match(SHOP_LINK)?.[0];
@@ -142,15 +167,16 @@ export default function App() {
     };
 
     (async () => {
-      const [s, w] = await Promise.all([loadSettings(), loadWallet()]);
+      const [s, w, loc] = await Promise.all([loadSettings(), loadWallet(), loadLocation()]);
       setSettings(s);
       setWallet(w);
+      setLocation(loc);
       setRecent(await loadRecent());
       setWatch(await loadWatch());
       const v = await appVersion();
       setVersion(v);
       checkForUpdate(v.build).then(setUpdate, () => undefined);
-      recheck(w, s.lang ?? defaultLang());
+      recheck(w, s.lang ?? defaultLang(), loc);
       lookAtClipboard(s);
     })();
     refreshConfig();
@@ -160,8 +186,8 @@ export default function App() {
       search(text);
     }).then((c) => (cleanup = c));
     const resume = CapApp.addListener('resume', () => {
-      const { wallet: w, lang: l, settings: s } = live.current;
-      recheck(w, l);
+      const { wallet: w, lang: l, settings: s, location: loc } = live.current;
+      recheck(w, l, loc);
       lookAtClipboard(s);
     }).catch(() => undefined);
     const back = CapApp.addListener('backButton', onBack).catch(() => undefined);
@@ -181,6 +207,15 @@ export default function App() {
     setWallet(w);
     saveWallet(w);
     setResults((r) => repriceForWallet(r, expandWallet(w)));
+  };
+
+  const updateLocation = (loc: UserLocation | undefined) => {
+    setLocation(loc);
+    live.current.location = loc;
+    saveLocation(loc);
+    // Show the quick-commerce prices for the product on screen right away.
+    const cur = live.current.current;
+    if (loc && cur?.ref && !cur.pending) search(cur.query, cur.ref, cur.label);
   };
 
   const dismissClip = () => {
@@ -261,6 +296,9 @@ export default function App() {
                 suggestions={settings.suggestions}
                 recent={recent}
               />
+              <button className={`loc-chip ${location ? 'set' : ''}`} onClick={() => setLocOpen(true)}>
+                {location ? t('loc.deliverTo', { place: location.label }) : t('loc.set')}
+              </button>
 
               {clip && (
                 <div className="clip">
@@ -347,7 +385,15 @@ export default function App() {
               )}
 
               {error && <div className="error">{error}</div>}
-              <Results results={results} query={current?.label ?? ''} wallet={wallet} version={version.version} membershipName={membershipName} onCompareExact={compareExact} />
+              <Results
+                results={results}
+                query={current?.label ?? ''}
+                wallet={wallet}
+                version={version.version}
+                membershipName={membershipName}
+                onCompareExact={compareExact}
+                onSetLocation={() => setLocOpen(true)}
+              />
             </>
           )}
 
@@ -357,7 +403,7 @@ export default function App() {
             <Watch
               items={watch}
               backgroundOn={settings.background}
-              onCheck={async (it) => setWatch(await checkItem(it, expandWallet(wallet), lang))}
+              onCheck={async (it) => setWatch(await checkItem(it, expandWallet(wallet), lang, watchContext(location)))}
               onRemove={async (it) => setWatch(await removeFromWatch(it.id))}
               onOpen={(it) => search(it.query, it.refTitle ? makeReference(it.refTitle, 'product') : undefined, it.title)}
               onTarget={async (it, target) => setWatch(await updateWatchItem(it.id, { target }))}
@@ -369,6 +415,8 @@ export default function App() {
               settings={settings}
               onSettings={updateSettings}
               version={version}
+              location={location}
+              onEditLocation={() => setLocOpen(true)}
               onRestored={async () => {
                 setWallet(await loadWallet());
                 setWatch(await loadWatch());
@@ -378,6 +426,8 @@ export default function App() {
             />
           )}
         </main>
+
+        {locOpen && <LocationSheet value={location} onSave={updateLocation} onClose={() => setLocOpen(false)} />}
 
         <nav className="tabs">
           <button className={tab === 'search' ? 'on' : ''} onClick={() => setTab('search')}>

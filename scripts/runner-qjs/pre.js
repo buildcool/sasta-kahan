@@ -11,7 +11,9 @@ const NOTES = [];
 globalThis.CapacitorNotifications = { schedule: (n) => NOTES.push(...n) };
 const HANDLERS = {};
 globalThis.addEventListener = (ev, fn) => { HANDLERS[ev] = fn; };
-const routes = [[/amazon\.in/, 'search-amazon.html'], [/flipkart\.com/, 'search-flipkart.html'], [/nykaa\.com/, 'search-nykaa.html'], [/myntra\.com/, 'search-myntra.html'], [/meesho\.com/, 'search-meesho.json'], [/ajio\.com/, 'search-ajio.html'], [/tatacliq\.com/, 'search-tatacliq.html'], [/reliancedigital/, 'search-reliance.json'], [/croma\.com/, 'search-croma.json']];
+const routes = [[/amazon\.in/, 'search-amazon.html'], [/flipkart\.com/, 'search-flipkart.html'], [/nykaa\.com/, 'search-nykaa.html'], [/myntra\.com/, 'search-myntra.html'], [/meesho\.com/, 'search-meesho.json'], [/ajio\.com/, 'search-ajio.html'], [/tatacliq\.com/, 'search-tatacliq.html'], [/reliancedigital/, 'search-reliance.json'], [/croma\.com/, 'search-croma.json'],
+  // Quick commerce (needs the saved location below): Blinkit, JioMart, and DMart's store lookup + search.
+  [/blinkit\.com/, 'search-blinkit.json'], [/jiomart\.com/, 'search-jiomart.json'], [/pincodes\/details/, 'dmart-pincode.json'], [/dmart\.in\/api\/v3\/search/, 'search-dmart.json']];
 const FETCHED = [];
 globalThis.fetch = (url, init) => new Promise((resolve) => {
   FETCHED.push(`${init && init.method || 'GET'} ${url}`);
@@ -20,8 +22,10 @@ globalThis.fetch = (url, init) => new Promise((resolve) => {
   os.setTimeout(() => resolve({ status: r ? 200 : 404, text: () => Promise.resolve(body) }), 5);
 });
 KV.settings = JSON.stringify({ lang: 'hinglish' });
+KV.location = JSON.stringify({ lat: 12.9352, lng: 77.6245, pincode: '560034', label: 'Koramangala, Bengaluru 560034', source: 'pincode' });
 KV.wallet = JSON.stringify({ cards: [{ bank: 'axis', type: 'credit', card: 'flipkart-axis' }], apps: [], memberships: [], newUser: false });
 KV.watch = JSON.stringify([
   { id: 'lakme sunscreen spf 50', query: 'lakme sunscreen spf 50', title: 'Lakme Sunscreen SPF 50', target: 5000, history: [{ t: Date.now() - 3 * 86400000, price: 9999, site: 'Amazon', v: 2 }], lastChecked: 0 },
   { id: 'fresh', query: 'x', title: 'checked a minute ago', history: [], lastChecked: Date.now() - 60000 },
+  { id: 'amul taaza toned milk 500 ml', query: 'amul taaza toned milk 500 ml', title: 'Amul Taaza 500 ml', history: [{ t: Date.now() - 2 * 86400000, price: 35, site: 'Blinkit', v: 2 }], lastChecked: 0 },
 ]);

@@ -65,7 +65,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          version="1.1.${{ github.run_number }}"
+          version="1.2.${{ github.run_number }}"
           {
             echo "Download **SastaKahan.apk** on your phone and install it (it updates the app you already have)."
             echo

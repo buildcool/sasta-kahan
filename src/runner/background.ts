@@ -7,9 +7,10 @@ import { parseHTML } from 'linkedom';
 import { alertText } from '../core/alerts.ts';
 import { CONFIG_KEY, chooseConfig, type AppConfig, type CachedConfig } from '../core/configData.ts';
 import { EMPTY_WALLET, expandWallet } from '../core/effectivePrice.ts';
+import { asLocation, type UserLocation } from '../core/location.ts';
 import { makeReference } from '../core/matcher.ts';
 import type { SiteRequest } from '../core/parse.ts';
-import { checkSite, flagOutliers, priceFor, type FetchResult } from '../core/search.ts';
+import { canCheck, checkSiteWith, flagOutliers, priceFor, type FetchResult, type Net } from '../core/search.ts';
 import type { SiteResult, Wallet } from '../core/types.ts';
 import { applyCheck, isStale, lowestExact, mergeItems, type WatchItem } from '../core/watchLogic.ts';
 import type { Lang } from '../strings.ts';
@@ -56,15 +57,19 @@ function fetchText(req: SiteRequest): Promise<FetchResult> {
 
 const parseHtml = (html: string) => parseHTML(html).document as unknown as Document;
 
+// No cookie store and no browser here: sites that need them (Zepto, Instamart, BigBasket,
+// Flipkart Minutes) are left to the app; Blinkit, JioMart and DMart work with the saved location.
+const net: Net = { fetch: fetchText };
+
 /** Search the item on every relevant site at once (one request per site), like the app does. */
-async function searchItem(item: WatchItem, config: AppConfig, wallet: Wallet): Promise<SiteResult[]> {
+async function searchItem(item: WatchItem, config: AppConfig, wallet: Wallet, location?: UserLocation): Promise<SiteResult[]> {
   const ref = item.refTitle ? makeReference(item.refTitle, 'product') : makeReference(item.query, 'query');
   const general = ref.cats.includes('general');
-  const sites = config.sites.filter((s) => s.fetch !== false && (general || s.categories.some((c) => ref.cats.includes(c))));
+  const sites = config.sites.filter((s) => canCheck(s, net, location) === 'yes' && (general || s.categories.some((c) => ref.cats.includes(c))));
   const results = await Promise.all(
     sites.map(async (site): Promise<SiteResult> => {
       try {
-        const check = await checkSite(site, item.query, ref, fetchText, parseHtml);
+        const check = await checkSiteWith(site, item.query, ref, { net, location, parseHtml });
         const offers = config.offers.filter((o) => o.site === site.id);
         return { site, status: check.status, listings: [], best: check.best && priceFor(check.best, offers, wallet, site), manualUrl: '' };
       } catch {
@@ -81,6 +86,7 @@ export async function checkWatchlist(now = Date.now()): Promise<number> {
   const lang = settings.lang ?? 'en';
   const wallet = expandWallet({ ...EMPTY_WALLET, ...kvGet<Partial<Wallet>>('wallet', {}) });
   const config = chooseConfig(kvGet<CachedConfig | null>(CONFIG_KEY, null));
+  const location = asLocation(kvGet<unknown>('location', null));
   const due = kvGet<WatchItem[]>('watch', [])
     .filter((x) => isStale(x, RECHECK_MS, now))
     .sort((a, b) => a.lastChecked - b.lastChecked)
@@ -88,7 +94,7 @@ export async function checkWatchlist(now = Date.now()): Promise<number> {
 
   for (const [i, item] of due.entries()) {
     if (i) await sleep(2000); // be gentle: a short pause between products
-    const { item: next, alert } = applyCheck(item, lowestExact(await searchItem(item, config, wallet)), Date.now());
+    const { item: next, alert } = applyCheck(item, lowestExact(await searchItem(item, config, wallet, location)), Date.now());
     // Save after every item: the OS can stop background work at any moment.
     CapacitorKV.set('watch', JSON.stringify(mergeItems(kvGet<WatchItem[]>('watch', []), [next])));
     if (alert) {

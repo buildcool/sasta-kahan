@@ -1,11 +1,12 @@
 // Checking one site, independent of where it runs: the app (engine.ts) and the
 // background price checker (runner/background.ts) both use this with their own fetch.
+import { dedupe, extractJsonBlobs, getPath, stockOf } from './extract.ts';
 import { effectivePrice } from './effectivePrice.ts';
-import { extractJsonBlobs, stockOf } from './extract.ts';
+import { hasNeed, locationVars, type UserLocation } from './location.ts';
 import { extractQuantity, label, median, pickBest, sameQuantity, scoreListings, unitPrice, type Reference } from './matcher.ts';
 import { harvestOffers } from './offers.ts';
-import { buildRequest, parseResponse, type HtmlParser, type SiteRequest } from './parse.ts';
-import type { MatchWhy, Offer, ScoredListing, SiteConfig, SiteResult, SiteStatus, Wallet } from './types.ts';
+import { buildRequest, fill, parseResponse, templateRequest, type HtmlParser, type SiteRequest, type Vars } from './parse.ts';
+import type { Listing, MatchWhy, Offer, ScoredListing, SiteConfig, SiteResult, SiteStatus, Wallet } from './types.ts';
 
 export interface FetchResult {
   status: number;
@@ -13,24 +14,193 @@ export interface FetchResult {
 }
 export type Fetcher = (req: SiteRequest) => Promise<FetchResult>;
 
+/** Open a page in the hidden in-app browser (Android) and return what it saw. */
+export interface PageRequest {
+  url: string;
+  /** Cookie header lines to set first, per URL ("name=value; path=/"). */
+  cookies: { url: string; value: string }[];
+  /** Keep the page's own responses whose URL matches this regular expression. */
+  capture?: string;
+  /** Or: run this request inside the page once it has loaded. */
+  run?: SiteRequest;
+  /** Origins allowed to report back, e.g. "https://www.zepto.com". */
+  origins: string[];
+  timeoutMs: number;
+}
+
+export interface PageResult {
+  captures: { url: string; status: number; body: string }[];
+  /** Page title and the start of its text, to tell "pick your location" or a block page apart. */
+  title?: string;
+  text?: string;
+  /** Why it stopped: "done", "timeout" or "crash". */
+  reason?: string;
+}
+
+/** How a check reaches the sites. The app, the background checker and the scripts each bring their own. */
+export interface Net {
+  fetch: Fetcher;
+  /** Cookies the HTTP layer holds for a URL (the app's WebView cookie store). */
+  cookies?: (url: string) => Promise<Record<string, string>>;
+  readPage?: (req: PageRequest) => Promise<PageResult>;
+}
+
 export interface SiteCheck {
   status: Exclude<SiteStatus, 'loading' | 'manual'>;
   listings: ScoredListing[];
   best?: ScoredListing;
-  /** 'empty-page' when the site sent a page without products or a "no results" message. */
+  /**
+   * 'empty-page': the site sent a page without products or a "no results" message.
+   * 'no-delivery': the site doesn't deliver to the user's location.
+   */
   reason?: string;
   error?: string;
 }
 
+const isBlockedStatus = (s: number) => s === 403 || s === 429 || s === 503 || s === 202;
+
+/** True when a response says the site doesn't deliver here. */
+const NO_DELIVERY = /not\s+(?:yet\s+)?(?:serviceable|deliver(?:ing)?|available\s+(?:in|at)\s+your)|coming soon to your|outside (?:our|the) delivery|don'?t deliver|unserviceable/i;
+
 /** Read a site's search response and pick the listing that is this product. */
 export function readSearch(site: SiteConfig, res: FetchResult, ref: Reference, parseHtml?: HtmlParser): SiteCheck {
-  if (res.status === 403 || res.status === 429 || res.status === 503) return { status: 'blocked', listings: [], error: `HTTP ${res.status}` };
-  if (res.status !== 200) return { status: 'error', listings: [], error: `HTTP ${res.status}` };
+  // 202 with no body is how AWS WAF asks for its browser challenge.
+  if (isBlockedStatus(res.status) && (res.status !== 202 || !res.body.trim())) return { status: 'blocked', listings: [], error: `HTTP ${res.status}` };
+  if (site.location && res.status >= 400 && res.status < 500 && NO_DELIVERY.test(res.body.slice(0, 3000))) return { status: 'empty', listings: [], reason: 'no-delivery' };
+  if (res.status !== 200 && res.status !== 202) return { status: 'error', listings: [], error: `HTTP ${res.status}` };
   const parsed = parseResponse(site, res.body, parseHtml);
   if (parsed.status !== 'ok') return { status: parsed.status as SiteCheck['status'], listings: [], reason: parsed.reason };
-  const listings = scoreListings(ref, parsed.listings);
+  return scored(parsed.listings, ref);
+}
+
+function scored(raw: Listing[], ref: Reference): SiteCheck {
+  const listings = scoreListings(ref, raw);
   const best = pickBest(listings);
   return { status: best ? 'ok' : 'nomatch', listings, best };
+}
+
+/** Can this site be checked here and now? */
+export function canCheck(site: SiteConfig, net: Net, loc: UserLocation | undefined): 'yes' | 'needs-location' | 'app-only' | 'off' {
+  if (site.fetch === false) return 'off';
+  if (!hasNeed(loc, site.location)) return 'needs-location';
+  if (site.browser && !site.browser.fallback && !net.readPage) return 'app-only';
+  if (site.session && !net.cookies) return 'app-only';
+  return 'yes';
+}
+
+/** "path" (truthy) or "path=value". */
+function holds(json: unknown, rule: string): boolean {
+  const eq = rule.indexOf('=');
+  const v = getPath(json, eq > 0 ? rule.slice(0, eq) : rule);
+  return eq > 0 ? String(v) === rule.slice(eq + 1) : !!v && v !== 'false' && v !== 'NA';
+}
+
+function parseJson(body: string): unknown {
+  try {
+    return JSON.parse(body);
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Fetch, following Flipkart's "DC Change" answer: its API tells us which data centre
+ * ({dc} in the URL) to use for this user, and we retry there.
+ */
+export async function fetchWithDc(net: Net, req: SiteRequest, vars: Vars, rebuild: (v: Vars) => SiteRequest): Promise<FetchResult> {
+  const res = await net.fetch(req);
+  if (res.status === 406 && vars.dc !== undefined && res.body.includes('DC Change')) {
+    const id = String(getPath(parseJson(res.body), 'RESPONSE.id') ?? '');
+    if (/^\d+$/.test(id) && id !== vars.dc) {
+      vars.dc = id;
+      return net.fetch(rebuild(vars));
+    }
+  }
+  return res;
+}
+
+export type SetupResult = { ok: true; vars: Vars } | { ok: false; check: SiteCheck };
+
+/** Run a site's setup steps: tell it the delivery location, look up the store for a pincode… */
+export async function runSetup(site: SiteConfig, base: Vars, net: Net): Promise<SetupResult> {
+  const vars: Vars = { ...base };
+  // Sites with a {dc} in their URLs start at data centre 1 and move when told to.
+  if ([site.search, ...(site.setup ?? []).map((s) => s.url)].some((u) => u.includes('{dc}'))) vars.dc ??= '1';
+  for (const step of site.setup ?? []) {
+    const build = (v: Vars) => templateRequest(step.url, step, v);
+    const res = await fetchWithDc(net, build(vars), vars, build);
+    if (isBlockedStatus(res.status)) return { ok: false, check: { status: 'blocked', listings: [], error: `setup HTTP ${res.status}` } };
+    if (res.status < 200 || res.status >= 300) return { ok: false, check: { status: 'error', listings: [], error: `setup HTTP ${res.status}` } };
+    const json = parseJson(res.body);
+    if (step.require && !holds(json, step.require)) return { ok: false, check: { status: 'empty', listings: [], reason: 'no-delivery' } };
+    for (const [name, from] of Object.entries(step.save ?? {})) {
+      const value = from.startsWith('cookie:') ? (await net.cookies?.(build(vars).url))?.[from.slice(7)] : getPath(json, from);
+      if (value == null || value === '') return { ok: false, check: { status: 'error', listings: [], error: `setup: no ${name}` } };
+      vars[name] = String(value);
+    }
+  }
+  return { ok: true, vars };
+}
+
+/** What to open in the hidden in-app browser for a search. */
+export function pageRequest(site: SiteConfig, query: string, vars: Vars): PageRequest {
+  const b = site.browser ?? {};
+  const page = fill((b.page ?? site.manual ?? site.base).replace(/\{q\}/g, encodeURIComponent(query.trim())), vars, 'url');
+  return {
+    url: page,
+    cookies: (b.cookies ?? []).map((c) => {
+      const value = fill(c.value, vars, 'raw');
+      return { url: c.url, value: `${c.name}=${c.encode ? encodeURIComponent(value) : value}; path=/${c.domain ? `; domain=${c.domain}` : ''}` };
+    }),
+    capture: b.capture,
+    run: b.run ? buildRequest(site, query, vars) : undefined,
+    origins: [page.match(/^https?:\/\/[^/]+/)?.[0] ?? site.base],
+    timeoutMs: b.timeoutMs ?? 25000,
+  };
+}
+
+/** Read a site in the hidden in-app browser. */
+export async function browserCheck(site: SiteConfig, query: string, ref: Reference, vars: Vars, net: Net, parseHtml?: HtmlParser): Promise<SiteCheck> {
+  return readPageResult(site, await net.readPage!(pageRequest(site, query, vars)), ref, parseHtml);
+}
+
+/** Turn what the hidden browser saw into a check. */
+export function readPageResult(site: SiteConfig, res: PageResult, ref: Reference, parseHtml?: HtmlParser): SiteCheck {
+  const good = res.captures.filter((c) => c.status === 200 && c.body);
+  const raw = dedupe(good.flatMap((c) => parseResponse(site, c.body, parseHtml).listings));
+  if (raw.length) return scored(raw, ref);
+  if (good.length) return { status: 'empty', listings: [] };
+  const seen = `${res.title ?? ''} ${res.text ?? ''}`;
+  if (NO_DELIVERY.test(seen)) return { status: 'empty', listings: [], reason: 'no-delivery' };
+  if (res.captures.some((c) => isBlockedStatus(c.status)) || /access denied|verify you are human|captcha|unusual traffic/i.test(seen)) {
+    return { status: 'blocked', listings: [], error: 'browser: blocked' };
+  }
+  return { status: 'error', listings: [], error: `browser: ${res.reason ?? 'no results'}` };
+}
+
+/**
+ * Check one site: setup steps (when `setup` is given they already ran), the search request,
+ * and the hidden browser when the site needs it or blocks the plain request.
+ */
+export async function checkSiteWith(
+  site: SiteConfig,
+  query: string,
+  ref: Reference,
+  opts: { net: Net; vars?: Vars; parseHtml?: HtmlParser; location?: UserLocation },
+): Promise<SiteCheck> {
+  const { net, parseHtml } = opts;
+  let vars = opts.vars;
+  if (!vars) {
+    const setup = await runSetup(site, locationVars(opts.location), net);
+    if (!setup.ok) return setup.check;
+    vars = setup.vars;
+  }
+  if (site.browser && !site.browser.fallback) return browserCheck(site, query, ref, vars, net, parseHtml);
+  const v = vars;
+  const build = (x: Vars) => buildRequest(site, query, x);
+  const check = readSearch(site, await fetchWithDc(net, build(v), v, build), ref, parseHtml);
+  if (check.status === 'blocked' && site.browser?.fallback && net.readPage) return browserCheck(site, query, ref, v, net, parseHtml);
+  return check;
 }
 
 export async function checkSite(site: SiteConfig, query: string, ref: Reference, fetch: Fetcher, parseHtml?: HtmlParser): Promise<SiteCheck> {

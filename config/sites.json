@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "updated": "2026-10-22",
+  "updated": "2026-10-24",
   "sites": [
     {
       "id": "amazon",
@@ -193,10 +193,24 @@
       "id": "jiomart",
       "name": "JioMart",
       "base": "https://www.jiomart.com",
-      "search": "https://www.jiomart.com/search/{q}",
+      "search": "https://www.jiomart.com/ext/vertex/application/api/v1.0/products?q={q}&page_size=24",
+      "manual": "https://www.jiomart.com/products?q={q}",
+      "location": "pincode",
+      "request": {
+        "headers": { "Accept": "application/json", "x-location-detail": "{\"pincode\":\"{pincode}\",\"country\":\"INDIA\"}" }
+      },
       "categories": ["grocery", "beauty", "electronics", "home", "general"],
-      "fetch": false,
-      "app": "com.jpl.jiomart"
+      "productOffers": false,
+      "app": "com.jpl.jiomart",
+      "json": {
+        "name": ["name"],
+        "brand": ["brand.name"],
+        "price": ["price.effective.min"],
+        "mrp": ["price.marked.min"],
+        "url": [],
+        "urlTemplate": "/product/{slug}",
+        "image": ["medias.0.url"]
+      }
     },
     {
       "id": "purplle",
@@ -216,40 +230,272 @@
       "fetch": false
     },
     {
-      "id": "bigbasket",
-      "name": "BigBasket",
-      "base": "https://www.bigbasket.com",
-      "search": "https://www.bigbasket.com/ps/?q={q}",
-      "categories": ["grocery"],
-      "fetch": false,
-      "app": "com.bigbasket.mobileapp"
-    },
-    {
       "id": "blinkit",
       "name": "Blinkit",
       "base": "https://blinkit.com",
-      "search": "https://blinkit.com/s/?q={q}",
-      "categories": ["grocery"],
-      "fetch": false,
-      "app": "com.grofers.customerapp"
+      "search": "https://blinkit.com/v1/layout/search?q={q}&start=0&size=20",
+      "manual": "https://blinkit.com/s/?q={q}",
+      "quick": true,
+      "eta": "10 min",
+      "location": "latlng",
+      "request": {
+        "method": "POST",
+        "headers": {
+          "Accept": "application/json",
+          "Content-Type": "application/json",
+          "app_client": "consumer_web",
+          "app_version": "52434332",
+          "lat": "{lat}",
+          "lon": "{lng}",
+          "Origin": "https://blinkit.com",
+          "Referer": "https://blinkit.com/s/?q={q}"
+        },
+        "body": "{}"
+      },
+      "browser": {
+        "page": "https://blinkit.com/",
+        "run": true,
+        "fallback": true,
+        "cookies": [
+          { "url": "https://blinkit.com", "name": "gr_1_lat", "value": "{lat}" },
+          { "url": "https://blinkit.com", "name": "gr_1_lon", "value": "{lng}" }
+        ]
+      },
+      "categories": ["grocery", "beauty", "home", "electronics", "general"],
+      "productOffers": false,
+      "app": "com.grofers.customerapp",
+      "json": {
+        "name": ["product_name"],
+        "brand": ["brand"],
+        "extra": ["unit"],
+        "price": ["price"],
+        "mrp": ["mrp"],
+        "url": [],
+        "urlTemplate": "/prn/x/prid/{product_id}",
+        "image": ["image_url"],
+        "stock": ["inventory"]
+      },
+      "fees": { "note": "Quick-delivery apps add delivery, handling and small-cart fees on small orders (and sometimes a rain or late-night fee). Check the bill before paying.", "verified": "2026-10-24" }
     },
     {
       "id": "zepto",
       "name": "Zepto",
-      "base": "https://www.zeptonow.com",
-      "search": "https://www.zeptonow.com/search?query={q}",
-      "categories": ["grocery"],
-      "fetch": false,
-      "app": "com.zeptoconsumerapp"
+      "base": "https://www.zepto.com",
+      "search": "https://www.zepto.com/search?query={q}",
+      "quick": true,
+      "eta": "10 min",
+      "location": "latlng",
+      "browser": {
+        "page": "https://www.zepto.com/search?query={q}",
+        "cookies": [{ "url": "https://www.zepto.com", "name": "user_position", "value": "{\"latitude\":{lat},\"longitude\":{lng}}", "encode": true }],
+        "capture": "user-search-service/api/v\\d+/search"
+      },
+      "categories": ["grocery", "beauty", "home", "electronics", "general"],
+      "productOffers": false,
+      "app": "com.zeptoconsumerapp",
+      "json": {
+        "name": ["product.name"],
+        "brand": ["product.brand"],
+        "extra": ["productVariant.formattedPacksize"],
+        "price": ["discountedSellingPrice", "sellingPrice"],
+        "mrp": ["mrp", "productVariant.mrp"],
+        "priceScale": 0.01,
+        "url": [],
+        "urlTemplate": "/pn/x/pvid/{productVariant.id}",
+        "image": []
+      },
+      "fees": { "note": "Quick-delivery apps add delivery, handling and small-cart fees on small orders (and sometimes a rain or late-night fee). Check the bill before paying.", "verified": "2026-10-24" }
     },
     {
       "id": "instamart",
       "name": "Swiggy Instamart",
       "base": "https://www.swiggy.com",
-      "search": "https://www.swiggy.com/instamart/search?query={q}",
-      "categories": ["grocery"],
+      "search": "https://www.swiggy.com/instamart/search?custom_back=true&query={q}",
+      "quick": true,
+      "eta": "10 min",
+      "location": "latlng",
+      "browser": {
+        "page": "https://www.swiggy.com/instamart/search?custom_back=true&query={q}",
+        "cookies": [
+          {
+            "url": "https://www.swiggy.com",
+            "name": "userLocation",
+            "value": "{\"lat\":{lat},\"lng\":{lng},\"address\":\"\",\"area\":\"\",\"showUserDefaultAddressHint\":false}",
+            "encode": true,
+            "domain": ".swiggy.com"
+          }
+        ],
+        "capture": "/api/instamart/search"
+      },
+      "categories": ["grocery", "beauty", "home", "electronics", "general"],
+      "productOffers": false,
+      "app": "in.swiggy.android",
+      "json": {
+        "name": ["displayName"],
+        "brand": ["brand"],
+        "extra": ["variations.0.quantityDescription"],
+        "price": ["variations.0.price.offerPrice.units"],
+        "mrp": ["variations.0.price.mrp.units"],
+        "url": [],
+        "urlTemplate": "/instamart/item/{productId}",
+        "image": [],
+        "stock": ["variations.0.inventory.inStock", "inStock"]
+      },
+      "fees": { "note": "Quick-delivery apps add delivery, handling and small-cart fees on small orders (and sometimes a rain or late-night fee). Check the bill before paying.", "verified": "2026-10-24" }
+    },
+    {
+      "id": "bigbasket",
+      "name": "BigBasket",
+      "base": "https://www.bigbasket.com",
+      "search": "https://bbnow.bigbasket.com/listing-svc/v2/products?type=ps&slug={q}&page=1&bucket_id=65",
+      "manual": "https://www.bigbasket.com/ps/?q={q}",
+      "quick": true,
+      "eta": "10 min",
+      "location": "both",
+      "session": true,
+      "setup": [
+        { "url": "https://bbnow.bigbasket.com/", "headers": { "Accept": "text/html" } },
+        {
+          "url": "https://bbnow.bigbasket.com/ui-svc/v1/serviceable/?lat={lat}&lng={lng}&send_all_serviceability=true",
+          "headers": { "Accept": "application/json", "x-channel": "BB-WEB", "x-entry-context": "bbnow", "x-entry-context-id": "10" },
+          "require": "serviceable_ecs_info.bbnow.serviceable",
+          "save": { "csrf": "cookie:csurftoken" }
+        },
+        {
+          "url": "https://bbnow.bigbasket.com/member-svc/v2/member/current-delivery-address/",
+          "method": "PUT",
+          "headers": {
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+            "x-csurftoken": "{csrf}",
+            "x-channel": "BB-WEB",
+            "x-caller": "UI-KIRK",
+            "x-entry-context": "bbnow",
+            "x-entry-context-id": "10",
+            "x-requested-with": "XMLHttpRequest",
+            "x-tracker": "{uuid}",
+            "Origin": "https://bbnow.bigbasket.com",
+            "Referer": "https://bbnow.bigbasket.com/"
+          },
+          "body": "{\"lat\":{lat},\"long\":{lng},\"return_hub_cookies\":false,\"area\":null,\"contact_zipcode\":\"{pincode}\"}"
+        },
+        { "url": "https://bbnow.bigbasket.com/", "headers": { "Accept": "text/html" } }
+      ],
+      "request": {
+        "headers": {
+          "Accept": "application/json, text/plain, */*",
+          "x-channel": "BB-WEB",
+          "x-entry-context": "bbnow",
+          "x-entry-context-id": "10",
+          "x-tracker": "{uuid}",
+          "Referer": "https://bbnow.bigbasket.com/ps/?q={q}"
+        }
+      },
+      "categories": ["grocery", "beauty", "home", "electronics", "general"],
+      "productOffers": false,
+      "app": "com.bigbasket.mobileapp",
+      "json": {
+        "name": ["desc"],
+        "brand": ["brand.name"],
+        "extra": ["w"],
+        "price": ["pricing.discount.prim_price.sp"],
+        "mrp": ["pricing.discount.mrp"],
+        "url": ["absolute_url"],
+        "image": ["images.0.m", "images.0.s"],
+        "stock": ["availability.avail_status=001"],
+        "eta": ["availability.short_eta"]
+      },
+      "fees": { "note": "Quick-delivery apps add delivery, handling and small-cart fees on small orders (and sometimes a rain or late-night fee). Check the bill before paying.", "verified": "2026-10-24" }
+    },
+    {
+      "id": "fkminutes",
+      "name": "Flipkart Minutes",
+      "base": "https://www.flipkart.com",
+      "search": "https://{dc}.rome.api.flipkart.com/api/4/page/fetch?cacheFirst=false",
+      "manual": "https://www.flipkart.com/search?q={q}&marketplace=HYPERLOCAL",
+      "quick": true,
+      "eta": "15 min",
+      "location": "both",
+      "session": true,
+      "setup": [
+        { "url": "https://www.flipkart.com/", "headers": { "Accept": "text/html" } },
+        {
+          "url": "https://{dc}.rome.api.flipkart.com/api/1/location/serviceability",
+          "method": "POST",
+          "headers": { "Accept": "*/*", "Content-Type": "application/json", "x-user-agent": "Mozilla/5.0 FKUA/website/42/website/Desktop", "flipkart_secure": "true", "Origin": "https://www.flipkart.com", "Referer": "https://www.flipkart.com/" },
+          "body": "{\"latitude\":{lat},\"longitude\":{lng}}",
+          "require": "RESPONSE.serviceable"
+        },
+        {
+          "url": "https://{dc}.rome.api.flipkart.com/api/4/location/update",
+          "method": "POST",
+          "headers": { "Accept": "*/*", "Content-Type": "application/json", "x-user-agent": "Mozilla/5.0 FKUA/website/42/website/Desktop", "flipkart_secure": "true", "Origin": "https://www.flipkart.com", "Referer": "https://www.flipkart.com/" },
+          "body": "{\"geoLocation\":{\"latitude\":{lat},\"longitude\":{lng}},\"addressInfo\":{\"addressLine1\":\"{area}\",\"city\":\"{city}\",\"state\":\"{state}\",\"pincode\":\"{pincode}\"},\"redirectionUrl\":\"/search?q=milk&marketplace=HYPERLOCAL&pincode={pincode}\",\"marketplace\":\"HYPERLOCAL\"}"
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "headers": { "Accept": "*/*", "Content-Type": "application/json", "x-user-agent": "Mozilla/5.0 FKUA/website/42/website/Desktop", "flipkart_secure": "true", "Origin": "https://www.flipkart.com", "Referer": "https://www.flipkart.com/" },
+        "body": "{\"pageUri\":\"/search?q={qu}&marketplace=HYPERLOCAL&pincode={pincode}\",\"pageContext\":{\"fetchSeoData\":false,\"networkSpeed\":10000},\"requestContext\":{\"type\":\"BROWSE_PAGE\"},\"locationContext\":{\"pincode\":{pincode},\"latitude\":{lat},\"longitude\":{lng},\"changed\":false}}"
+      },
+      "categories": ["grocery", "beauty", "home", "electronics", "general"],
+      "productOffers": false,
+      "app": "com.flipkart.android",
+      "json": {
+        "name": ["titles.title"],
+        "brand": ["productBrand"],
+        "extra": ["titles.subtitle"],
+        "price": ["pricing.finalPrice.value"],
+        "mrp": ["pricing.prices.0.value"],
+        "url": ["baseUrl"],
+        "image": ["media.images.0.url"],
+        "etaSeconds": ["deliverySla"]
+      },
+      "fees": { "note": "Quick-delivery apps add delivery, handling and small-cart fees on small orders (and sometimes a rain or late-night fee). Check the bill before paying.", "verified": "2026-10-24" }
+    },
+    {
+      "id": "dmart",
+      "name": "DMart Ready",
+      "base": "https://www.dmart.in",
+      "search": "https://digital.dmart.in/api/v3/search/{q}?page=1&size=20&channel=web&storeId={store}",
+      "manual": "https://www.dmart.in/search?searchTerm={q}",
+      "location": "pincode",
+      "setup": [
+        {
+          "url": "https://digital.dmart.in/api/v2/pincodes/details",
+          "method": "POST",
+          "headers": { "Accept": "application/json", "Content-Type": "application/json", "Origin": "https://www.dmart.in", "Referer": "https://www.dmart.in/" },
+          "body": "{\"uniqueId\":\"\",\"apiMode\":\"GA\",\"pincode\":\"{pincode}\"}",
+          "require": "isPincodeServiceable=true",
+          "save": { "store": "storePincodeDetails.storeId" }
+        }
+      ],
+      "setupHours": 24,
+      "request": {
+        "headers": { "Accept": "application/json", "Origin": "https://www.dmart.in", "Referer": "https://www.dmart.in/" }
+      },
+      "categories": ["grocery", "home", "beauty", "general"],
+      "productOffers": false,
+      "app": "in.dmart",
+      "json": {
+        "name": ["name"],
+        "price": ["priceSALE"],
+        "mrp": ["priceMRP"],
+        "url": [],
+        "urlTemplate": "/product/{^seo_token_ntk}?selectedProd={skuUniqueID}",
+        "image": [],
+        "stock": ["buyable"]
+      }
+    },
+    {
+      "id": "amazonnow",
+      "name": "Amazon Now",
+      "base": "https://www.amazon.in",
+      "search": "https://www.amazon.in/s?k={q}&i=nowstore",
+      "quick": true,
+      "categories": ["grocery", "beauty", "home", "general"],
       "fetch": false,
-      "app": "in.swiggy.android"
+      "app": "in.amazon.mShop.android.shopping"
     }
   ]
 }

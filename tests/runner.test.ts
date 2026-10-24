@@ -68,6 +68,20 @@ describe('background price check', () => {
     expect(await checkWatchlist()).toBe(0);
     expect(fetched).toHaveLength(0);
   });
+  it('checks the quick-commerce sites it can reach without the app (with a saved location)', async () => {
+    kv.location = JSON.stringify({ lat: 12.9352, lng: 77.6245, pincode: '560034', label: 'Koramangala', source: 'pincode' });
+    kv.watch = JSON.stringify([item({ id: 'milk', query: 'amul taaza toned milk 500 ml', title: 'Amul Taaza' })]);
+    await checkWatchlist();
+    const hosts = fetched.map((u) => new URL(u).host);
+    expect(hosts).toEqual(expect.arrayContaining(['blinkit.com', 'www.jiomart.com', 'digital.dmart.in']));
+    // Zepto/Instamart need the app's browser; BigBasket/Flipkart Minutes its cookie store.
+    expect(hosts.filter((h) => /zepto|swiggy|bigbasket|rome\.api\.flipkart/.test(h))).toEqual([]);
+  });
+  it('skips quick-commerce sites without a location', async () => {
+    kv.watch = JSON.stringify([item({ id: 'milk', query: 'amul taaza toned milk 500 ml', title: 'Amul Taaza' })]);
+    await checkWatchlist();
+    expect(fetched.some((u) => /blinkit|jiomart|dmart/.test(u))).toBe(false);
+  });
   it('keeps items the user added while it was running', async () => {
     kv.watch = JSON.stringify([item()]);
     const run = checkWatchlist();

@@ -114,7 +114,7 @@ export function stockOf(o: Record<string, unknown>): boolean | undefined {
   for (const k of ['inStock', 'in_stock', 'isInStock', 'is_in_stock', 'isAvailable', 'is_available', 'sellable']) {
     if (typeof o[k] === 'boolean') return o[k] as boolean;
   }
-  for (const k of ['outOfStock', 'out_of_stock', 'isOutOfStock', 'is_out_of_stock', 'soldOut', 'isSoldOut', 'sold_out']) {
+  for (const k of ['outOfStock', 'out_of_stock', 'isOutOfStock', 'is_out_of_stock', 'soldOut', 'isSoldOut', 'sold_out', 'is_sold_out']) {
     if (typeof o[k] === 'boolean') return !o[k];
   }
   const offers = Array.isArray(o.offers) ? o.offers[0] : o.offers;
@@ -123,6 +123,33 @@ export function stockOf(o: Record<string, unknown>): boolean | undefined {
   if (/out[\s_-]?of[\s_-]?stock|sold[\s_-]?out|unavailable|discontinued/i.test(text)) return false;
   if (/in[\s_-]?stock|available/i.test(text)) return true;
   return undefined;
+}
+
+/**
+ * Stock from a site's own rules (config json.stock): "path" is a count or flag
+ * (0 / false = out of stock), "path=value" means in stock only when equal.
+ */
+export function stockByRules(o: Record<string, unknown>, rules: string[]): boolean | undefined {
+  for (const rule of rules) {
+    const eq = rule.indexOf('=');
+    const v = getPath(o, eq > 0 ? rule.slice(0, eq) : rule);
+    if (v == null || v === '') continue;
+    if (eq > 0) return String(v) === rule.slice(eq + 1);
+    if (typeof v === 'boolean') return v;
+    if (typeof v === 'string' && /^(true|false)$/i.test(v)) return v.toLowerCase() === 'true';
+    const n = Number(v);
+    if (Number.isFinite(n)) return n > 0;
+  }
+  return undefined;
+}
+
+/** "10 mins" / 715 (seconds) → "10 min". */
+export function etaText(text: unknown, seconds?: unknown): string | undefined {
+  const s = Number(seconds);
+  if (Number.isFinite(s) && s > 0) return `${Math.max(1, Math.round(s / 60))} min`;
+  if (typeof text !== 'string' || !text.trim()) return undefined;
+  const m = text.match(/(\d+)\s*(?:mins?|minutes?)\b/i);
+  return m ? `${m[1]} min` : text.trim().slice(0, 24);
 }
 
 /** Rupee amount in a coupon value: 298, {value: 298}, or "Best Price ₹348 with coupon". */
@@ -212,29 +239,34 @@ export function findProducts(root: unknown, site: SiteConfig): Listing[] {
   const mrpKeys = site.json?.mrp ?? MRP_KEYS;
   const urlKeys = site.json?.url ?? URL_KEYS;
   const urlTemplate = site.json?.urlTemplate;
+  const scale = site.json?.priceScale ?? 1;
+  const scaled = (n: number | undefined) => (n && scale !== 1 ? Math.round(n * scale * 100) / 100 : n);
+  // Configured name fields are trusted with short names ("Onion"); the generic walk needs longer ones.
+  const minTitle = site.json?.name ? 3 : 8;
 
-  const visit = (node: unknown, depth: number) => {
+  // `parent` is the nearest enclosing object (arrays skipped), for "{^field}" in URL templates.
+  const visit = (node: unknown, depth: number, parent?: Record<string, unknown>) => {
     if (!node || typeof node !== 'object' || depth > 40 || seen.has(node)) return;
     seen.add(node);
     if (Array.isArray(node)) {
-      for (const n of node) visit(n, depth + 1);
+      for (const n of node) visit(n, depth + 1, parent);
       return;
     }
     const o = node as Record<string, unknown>;
     const title = pickString(o, nameKeys);
-    const price = pickPrice(o, priceKeys);
+    const price = scaled(pickPrice(o, priceKeys));
     let url = pickString(o, urlKeys);
     if (!url && urlTemplate) {
       let missing = false;
-      url = urlTemplate.replace(/\{([\w.]+)\}/g, (_, k) => {
-        const v = getPath(o, k);
+      url = urlTemplate.replace(/\{(\^?[\w.]+)\}/g, (_, k: string) => {
+        const v = k.startsWith('^') ? getPath(parent, k.slice(1)) : getPath(o, k);
         if (v == null || v === '') missing = true;
         return encodeURIComponent(String(v ?? ''));
       });
       if (missing) url = undefined;
     }
-    if (title && price && url && title.length >= 8 && !/^https?:/.test(title)) {
-      const mrp = pickPrice(o, mrpKeys);
+    if (title && price && url && title.length >= minTitle && !/^https?:/.test(title)) {
+      const mrp = scaled(pickPrice(o, mrpKeys));
       const brandRaw = site.json?.brand ? pick(o, site.json.brand) : o.brand;
       const brand = typeof brandRaw === 'string' ? brandRaw : pickString((brandRaw as Record<string, unknown>) ?? {}, ['name']);
       let fullTitle = brand && !title.toLowerCase().includes(brand.toLowerCase()) ? `${brand} ${title}` : title;
@@ -245,21 +277,26 @@ export function findProducts(root: unknown, site: SiteConfig): Listing[] {
       }
       const couponRaw = site.json?.coupon ? pick(o, site.json.coupon) : undefined;
       const coupon = sanePrice(couponPrice(couponRaw), price);
+      // Flipkart image URLs carry size placeholders: .../image/{@width}/{@height}/...?q={@quality}
+      const image = pickString(o, site.json?.image ?? IMG_KEYS)?.replace('{@width}', '312').replace('{@height}', '312').replace('{@quality}', '70');
       const listing: Listing = {
         site: site.id,
         title: fullTitle,
         price,
         mrp: mrp && mrp >= price ? mrp : undefined,
         url: absolutize(url, site.base)!,
-        image: absolutize(pickString(o, site.json?.image ?? IMG_KEYS), site.base),
+        image: absolutize(image, site.base),
         rating: toNumber(pick(o, site.json?.rating ?? RATING_KEYS)),
         ratingCount: toCount(pick(o, site.json?.ratingCount ?? RATING_COUNT_KEYS)),
-        inStock: stockOf(o),
+        inStock: (site.json?.stock && stockByRules(o, site.json.stock)) ?? stockOf(o),
       };
       if (coupon) listing.coupon = { price: coupon, text: typeof couponRaw === 'string' ? couponRaw.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim() : 'with coupon' };
+      const j = site.json;
+      const eta = j && (j.eta || j.etaSeconds) ? etaText(j.eta && pick(o, j.eta), j.etaSeconds && pick(o, j.etaSeconds)) : undefined;
+      if (eta) listing.eta = eta;
       found.push(listing);
     }
-    for (const k in o) visit(o[k], depth + 1);
+    for (const k in o) visit(o[k], depth + 1, o);
   };
   visit(root, 0);
   return found.filter((l) => l.url);

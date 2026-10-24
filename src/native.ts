@@ -1,9 +1,11 @@
 import { App } from '@capacitor/app';
 import { Clipboard } from '@capacitor/clipboard';
 import { Capacitor, CapacitorCookies, registerPlugin, type PluginListenerHandle } from '@capacitor/core';
+import { Geolocation } from '@capacitor/geolocation';
 import { LocalNotifications } from '@capacitor/local-notifications';
 import { Share } from '@capacitor/share';
 import { UA } from './core/fetcher.ts';
+import type { PageRequest, PageResult } from './core/search.ts';
 
 const native = Capacitor.isNativePlatform();
 
@@ -17,12 +19,27 @@ interface ShareInPlugin {
 }
 const ShareIn = registerPlugin<ShareInPlugin>('ShareIn');
 
+/** A place from the phone's geocoder. */
+export interface NativePlace {
+  lat: number;
+  lng: number;
+  pincode?: string;
+  area?: string;
+  city?: string;
+  state?: string;
+  country?: string;
+}
+
 /** Implemented in android/app/src/main/java/app/sastakahan/ToolsPlugin.java. */
 interface ToolsPlugin {
   openInApp(o: { url: string; package?: string }): Promise<{ opened: boolean }>;
   scanBarcode(): Promise<{ code: string }>;
   openLogin(o: { url: string; title: string; userAgent: string }): Promise<void>;
   clearCookies(o: { url: string; domain?: string }): Promise<void>;
+  getCookies(o: { url: string }): Promise<Record<string, string>>;
+  readPage(o: PageRequest): Promise<PageResult>;
+  geocode(o: { query: string; max?: number }): Promise<{ results: NativePlace[] }>;
+  reverseGeocode(o: { lat: number; lng: number }): Promise<{ results: NativePlace[] }>;
 }
 const Tools = registerPlugin<ToolsPlugin>('Tools');
 
@@ -94,6 +111,46 @@ export async function openLogin(url: string, title: string): Promise<void> {
 /** Log out of a shop (beta logins): expire its cookies, including domain-wide ones. */
 export async function clearCookies(url: string, domain?: string): Promise<void> {
   if (native) await Tools.clearCookies({ url, domain }).catch(() => CapacitorCookies.clearCookies({ url }));
+}
+
+/** The hidden in-app browser for sites that only answer real browsers (Android only). */
+export const canReadPage = () => native;
+
+export async function readPage(req: PageRequest): Promise<PageResult> {
+  try {
+    return await Tools.readPage(req);
+  } catch (e) {
+    return { captures: [], reason: `error: ${e instanceof Error ? e.message : String(e)}` };
+  }
+}
+
+/** Cookies the app holds for a site (its WebView cookie store, shared with the native requests). */
+export async function cookiesFor(url: string): Promise<Record<string, string>> {
+  if (!native) return {};
+  return Tools.getCookies({ url }).catch(() => ({}));
+}
+
+/** Places for a pincode or area name from the phone's own geocoder; throws when there's none. */
+export async function geocode(query: string): Promise<NativePlace[]> {
+  if (!native) throw new Error('no-geocoder');
+  return (await Tools.geocode({ query, max: 5 })).results;
+}
+
+export async function reverseGeocode(lat: number, lng: number): Promise<NativePlace[]> {
+  if (!native) throw new Error('no-geocoder');
+  return (await Tools.reverseGeocode({ lat, lng })).results;
+}
+
+/** Where the phone is, asking for location permission first. Throws 'denied' if refused. */
+export async function currentPosition(): Promise<{ lat: number; lng: number }> {
+  if (native) {
+    const has = (p: { location: string; coarseLocation: string }) => p.location === 'granted' || p.coarseLocation === 'granted';
+    if (!has(await Geolocation.checkPermissions())) {
+      if (!has(await Geolocation.requestPermissions({ permissions: ['location', 'coarseLocation'] }))) throw new Error('denied');
+    }
+  }
+  const p = await Geolocation.getCurrentPosition({ enableHighAccuracy: true, timeout: 20000, maximumAge: 120000 });
+  return { lat: p.coords.latitude, lng: p.coords.longitude };
 }
 
 export async function appVersion(): Promise<{ version: string; build: number }> {

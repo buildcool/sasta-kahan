@@ -1,12 +1,15 @@
 import { dedupe, extractJsonBlobs, extractWithSelectors, findProducts } from './extract.ts';
-import type { Listing, SiteConfig, SiteStatus } from './types.ts';
+import type { HttpMethod, Listing, RequestTemplate, SiteConfig, SiteStatus } from './types.ts';
 
 export interface SiteRequest {
   url: string;
-  method: 'GET' | 'POST';
+  method: HttpMethod;
   headers: Record<string, string>;
   body?: string;
 }
+
+/** Values for `{name}` placeholders in config/sites.json templates. */
+export type Vars = Record<string, string>;
 
 export function encodeQuery(site: SiteConfig, query: string): string {
   const q = query.trim().replace(/\s+/g, ' ');
@@ -15,21 +18,55 @@ export function encodeQuery(site: SiteConfig, query: string): string {
   return encodeURIComponent(q).replace(/%20/g, '+');
 }
 
-export function buildRequest(site: SiteConfig, query: string): SiteRequest {
-  const r = site.request ?? {};
-  const isApi = !!r.body || (r.headers?.Accept ?? '').includes('json');
-  const qUrl = isApi ? encodeURIComponent(query.trim()) : encodeQuery(site, query);
+/** Random id for `{uuid}` (no crypto.randomUUID in the background checker's engine). */
+export function uuid(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') return crypto.randomUUID();
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    return (c === 'x' ? r : (r & 3) | 8).toString(16);
+  });
+}
+
+/**
+ * Fill `{name}` placeholders. Only names we have a value for are replaced, so JSON braces
+ * in bodies are left alone. URLs get encoded values, JSON bodies escaped ones.
+ */
+export function fill(template: string, vars: Vars, mode: 'url' | 'json' | 'raw'): string {
+  return template.replace(/\{(\w+)\}/g, (all, k: string) => {
+    if (k === 'uuid') return uuid();
+    const v = vars[k];
+    if (v === undefined) return all;
+    if (mode === 'url') return encodeURIComponent(v);
+    if (mode === 'json') return JSON.stringify(v).slice(1, -1);
+    return v;
+  });
+}
+
+/** A request from a template: the search, or a setup step. */
+export function templateRequest(url: string, t: RequestTemplate, vars: Vars, qUrl?: string): SiteRequest {
+  const headers: Record<string, string> = {};
+  for (const [k, v] of Object.entries(t.headers ?? {})) headers[k] = fill(v, vars, 'raw');
   return {
-    url: site.search.replace('{q}', qUrl),
-    method: r.method ?? 'GET',
-    headers: { ...r.headers },
-    // JSON.stringify(...).slice(1, -1) escapes quotes so the query is safe inside the JSON body.
-    body: r.body?.replace('{q}', JSON.stringify(query.trim()).slice(1, -1)),
+    url: fill(qUrl === undefined ? url : url.replace(/\{q\}/g, qUrl), vars, 'url'),
+    method: t.method ?? 'GET',
+    headers,
+    body: t.body === undefined ? undefined : fill(t.body, vars, 'json'),
   };
 }
 
+export function buildRequest(site: SiteConfig, query: string, vars: Vars = {}): SiteRequest {
+  const r = site.request ?? {};
+  const isApi = !!r.body || (r.headers?.Accept ?? '').includes('json');
+  const q = query.trim();
+  const qUrl = isApi ? encodeURIComponent(q) : encodeQuery(site, query);
+  // {q} in a header (a Referer) is URL-encoded; in a JSON body it's escaped text; {qu} is URL-encoded anywhere.
+  const req = templateRequest(site.search, { ...r, headers: undefined }, { ...vars, q, qu: encodeURIComponent(q) }, qUrl);
+  for (const [k, v] of Object.entries(r.headers ?? {})) req.headers[k] = fill(v, { ...vars, q: encodeURIComponent(q), qu: encodeURIComponent(q) }, 'raw');
+  return req;
+}
+
 export function manualUrl(site: SiteConfig, query: string): string {
-  return (site.manual ?? site.search).replace('{q}', encodeQuery(site, query));
+  return (site.manual ?? site.search).replace(/\{q\}/g, encodeQuery(site, query));
 }
 
 export interface ParseResult {

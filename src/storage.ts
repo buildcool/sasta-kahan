@@ -1,5 +1,6 @@
 import { Preferences } from '@capacitor/preferences';
 import { EMPTY_WALLET } from './core/effectivePrice.ts';
+import { asLocation, type UserLocation } from './core/location.ts';
 import type { UserCard, Wallet } from './core/types.ts';
 import type { PricePoint, WatchItem } from './core/watchLogic.ts';
 import type { Lang } from './strings.ts';
@@ -67,12 +68,22 @@ export interface Settings {
   lastClip?: string;
   /** Sites the user logged into inside the app (beta). */
   logins?: string[];
+  /** Read Zepto and Instamart in a hidden in-app browser (default on). */
+  quickBrowser: boolean;
 }
 
-export const DEFAULT_SETTINGS: Settings = { background: true, clipboard: true, suggestions: true };
+export const DEFAULT_SETTINGS: Settings = { background: true, clipboard: true, suggestions: true, quickBrowser: true };
 
 export const loadSettings = async (): Promise<Settings> => ({ ...DEFAULT_SETTINGS, ...(await get<Partial<Settings>>('settings', {})) });
 export const saveSettings = (s: Settings) => set('settings', s);
+
+/** Delivery location for quick-commerce prices. Not part of backups: it's quick to set again. */
+export const loadLocation = async (): Promise<UserLocation | undefined> => asLocation(await get<unknown>('location', null));
+
+export async function saveLocation(loc: UserLocation | undefined): Promise<void> {
+  if (loc) await set('location', loc);
+  else await Preferences.remove({ key: 'location' });
+}
 
 export const loadWatch = () => get<WatchItem[]>('watch', []);
 export const saveWatch = (items: WatchItem[]) => set('watch', items);

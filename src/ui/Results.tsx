@@ -14,15 +14,18 @@ interface Props {
   version: string;
   membershipName: (id: string) => string;
   onCompareExact: (l: ScoredListing) => void;
+  /** Open the delivery-location picker (quick-commerce sites need it). */
+  onSetLocation?: () => void;
 }
 
 const finalPrice = (r: SiteResult) => r.best!.effective?.mine ?? r.best!.price;
 
-export function Results({ results, query, wallet, version, membershipName, onCompareExact }: Props) {
+export function Results({ results, query, wallet, version, membershipName, onCompareExact, onSetLocation }: Props) {
   const t = useT();
   const [sortBy, setSortBy] = useState<SortBy>('best');
   const [onlySame, setOnlySame] = useState(false);
   const [hideOos, setHideOos] = useState(false);
+  const [onlyQuick, setOnlyQuick] = useState(false);
 
   const found = results.filter((r) => r.status === 'ok' && r.best);
   // The winner must be buyable and believable: in stock, not a suspiciously low outlier.
@@ -33,7 +36,7 @@ export function Results({ results, query, wallet, version, membershipName, onCom
   const costliest = peers.length > 1 ? Math.max(...peers.map(finalPrice)) : undefined;
   const hasWallet = wallet.cards.length + wallet.apps.length + wallet.memberships.length > 0;
 
-  let shown = found.filter((r) => (!onlySame || r.best!.match === 'exact') && (!hideOos || r.best!.inStock !== false));
+  let shown = found.filter((r) => (!onlySame || r.best!.match === 'exact') && (!hideOos || r.best!.inStock !== false) && (!onlyQuick || r.site.quick));
   if (sortBy === 'list') shown = [...shown].sort((a, b) => a.best!.price - b.best!.price);
   if (sortBy === 'rating') shown = [...shown].sort((a, b) => (b.best!.rating ?? 0) - (a.best!.rating ?? 0) || (b.best!.ratingCount ?? 0) - (a.best!.ratingCount ?? 0));
   const hidden = found.length - shown.length;
@@ -41,6 +44,7 @@ export function Results({ results, query, wallet, version, membershipName, onCom
   const nomatch = results.filter((r) => r.status === 'nomatch');
   const rest = results.filter((r) => r.status !== 'ok' && r.status !== 'nomatch');
   const loading = results.filter((r) => r.status === 'loading').length;
+  const needLocation = rest.filter((r) => r.error === 'needs-location').map((r) => r.site.name);
 
   return (
     <div className="results">
@@ -84,6 +88,11 @@ export function Results({ results, query, wallet, version, membershipName, onCom
               {t('res.hideOos')}
             </button>
           )}
+          {found.some((r) => r.site.quick) && found.some((r) => !r.site.quick) && (
+            <button className={`chip small ${onlyQuick ? 'on' : ''}`} onClick={() => setOnlyQuick(!onlyQuick)}>
+              {t('res.quickOnly')}
+            </button>
+          )}
         </div>
       )}
 
@@ -115,6 +124,14 @@ export function Results({ results, query, wallet, version, membershipName, onCom
       {rest.length > 0 && (
         <div className="manual">
           <div className="manual-title">{t('res.manualTitle')}</div>
+          {needLocation.length > 0 && onSetLocation && (
+            <div className="need-loc">
+              <span>{t('res.needLocation', { sites: needLocation.join(', ') })}</span>
+              <button className="pill" onClick={onSetLocation}>
+                {t('res.setLocation')}
+              </button>
+            </div>
+          )}
           {rest.map((r) => (
             <a key={r.site.id} className={`manual-row status-${r.status}`} href={r.manualUrl} target="_blank" rel="noreferrer">
               <span className="site-dot" data-site={r.site.id}>
@@ -208,6 +225,7 @@ function SiteCard({ r, isWinner, query, wallet, version, membershipName, onCompa
         </span>
         <span className="card-site">{r.site.name}</span>
         {b.match !== 'exact' && <span className={`badge badge-${b.match}`}>{t(`match.${b.match}` as 'match.similar')}</span>}
+        {r.site.quick && (b.eta ?? r.site.eta) && <span className="badge badge-quick">{t('badge.quick', { eta: b.eta ?? r.site.eta! })}</span>}
         {b.inStock === false && <span className="badge badge-bad">{t('badge.oos')}</span>}
         {r.outlier && <span className="badge badge-bad">{t('badge.outlier')}</span>}
         {isWinner && <span className="badge badge-best">{t('badge.cheapest')}</span>}
